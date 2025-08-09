@@ -39,6 +39,13 @@ export default function HomeScreen({ navigation, route }: any) {
     department: 'Loading...',
     avatar: '👨‍🔧'
   });
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [scanHistory, setScanHistory] = useState<any>({
+    sessions: [],
+    totalScans: 0,
+    totalReparable: 0,
+    totalBeyondRepair: 0
+  });
   const token = route.params?.token;
   const API_BASE_URL = 'https://embroider-scann-app.onrender.com';
 
@@ -70,31 +77,130 @@ export default function HomeScreen({ navigation, route }: any) {
     }
   };
 
-  // Fetch operations when screen is focused
- const saveScanToBackend = async (scanData: any, operationType = 'SCAN') => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/scan`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: token,
-      },
-      body: JSON.stringify({
-        scannedData: scanData,
-        operationType,
-        timestamp: new Date().toISOString(),
-      }),
-    });
-    const result = await response.json();
-    if (!response.ok) {
-      throw new Error(result.error || 'Failed to save scan');
+  // Fetch scan history
+  const fetchScanHistory = async () => {
+    try {
+      console.log('🔄 Fetching scan history...');
+      const response = await fetch(`${API_BASE_URL}/api/scan/history`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const historyData = await response.json();
+        console.log('✅ Scan history fetched:', historyData);
+        setScanHistory(historyData);
+        
+        // Update the UI stats with real data
+        setScreensScanned(historyData.totalScans || 0);
+        setReparable(historyData.totalReparable || 0);
+        setBeyondRepair(historyData.totalBeyondRepair || 0);
+      } else {
+        console.error('❌ Failed to fetch scan history:', response.status);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching scan history:', error);
+    }
+  };
+
+  // Start a new session
+  const startSession = async () => {
+    try {
+      console.log('🔄 Starting new session...');
+      const response = await fetch(`${API_BASE_URL}/api/sessions/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const sessionData = await response.json();
+        console.log('✅ Session started:', sessionData);
+        setCurrentSessionId(sessionData.sessionId);
+        return sessionData.sessionId;
+      } else {
+        console.error('❌ Failed to start session:', response.status);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Error starting session:', error);
+      return null;
+    }
+  };
+
+  // Stop current session
+  const stopSession = async () => {
+    if (!currentSessionId) return;
+    
+    try {
+      console.log('🔄 Stopping session...');
+      const response = await fetch(`${API_BASE_URL}/api/sessions/stop`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          sessionId: currentSessionId
+        }),
+      });
+
+      if (response.ok) {
+        const sessionData = await response.json();
+        console.log('✅ Session stopped:', sessionData);
+        setCurrentSessionId(null);
+        // Refresh scan history after stopping session
+        fetchScanHistory();
+        return sessionData;
+      } else {
+        console.error('❌ Failed to stop session:', response.status);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Error stopping session:', error);
+      return null;
+    }
+  };
+
+  // Save scan to backend with proper structure
+  const saveScanToBackend = async (barcode: string, status: string) => {
+    if (!currentSessionId) {
+      console.error('❌ No active session to save scan');
+      return false;
     }
 
-    console.log('✅ Scan saved to backend');
-  } catch (err) {
-    console.error('❌ Error saving scan:', err);
-  }
-};
+    try {
+      console.log('🔄 Saving scan to backend:', { barcode, status, sessionId: currentSessionId });
+      const response = await fetch(`${API_BASE_URL}/api/scan`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          barcode,
+          status,
+          sessionId: currentSessionId,
+        }),
+      });
+      
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to save scan');
+      }
+
+      console.log('✅ Scan saved to backend:', result);
+      return true;
+    } catch (err) {
+      console.error('❌ Error saving scan:', err);
+      return false;
+    }
+  };
   // Helper Functions
   const generateRandomBarcode = () => {
     const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -150,49 +256,48 @@ export default function HomeScreen({ navigation, route }: any) {
   };
 
   // Action Handlers
-  const handleStartTask = () => {
-    const now = new Date();
-    setSessionActive(true);
-    setScreensScanned(0);
-    setReparable(0);
-    setBeyondRepair(0);
-    setStartTime(now);
-    setEndTime(null);
-    setScanning(true);
-    setElapsedSeconds(0);
-    
-    saveScanToBackend({ startTime: now.toISOString() }, 'SESSION_START');
-    
+  const handleStartTask = async () => {
+    const sessionId = await startSession();
+    if (sessionId) {
+      const now = new Date();
+      setSessionActive(true);
+      setScreensScanned(0);
+      setReparable(0);
+      setBeyondRepair(0);
+      setStartTime(now);
+      setEndTime(null);
+      setScanning(true);
+      setElapsedSeconds(0);
+      setElapsedMilliseconds(0);
+      
+      console.log('✅ Task session started successfully');
+    } else {
+      Alert.alert('Error', 'Failed to start task session. Please try again.');
+    }
   };
 
   const handleScanScreen = () => {
-  navigation.navigate('CameraScanner', {
-    onScan: (scannedData: string) => {
-      setScannedBarcode(scannedData);
-
-      const scanTimestamp = new Date().toISOString();
-      const scanOp = {
-        operationType: 'SCAN',
-        createdAt: scanTimestamp,
-        details: { barcode: scannedData, timestamp: scanTimestamp },
-      };
-
-      setOperations(prev => [scanOp, ...prev]);
-
-    saveScanToBackend(scanOp.details, 'SCAN');
-
-      setStatusModalVisible(true);
+    if (!currentSessionId) {
+      Alert.alert('Error', 'Please start a task session first');
+      return;
     }
-  });
-};
+    
+    navigation.navigate('CameraScanner', {
+      onScan: (scannedData: string) => {
+        setScannedBarcode(scannedData);
+        setStatusModalVisible(true);
+      }
+    });
+  };
 
   const handleManualBarcode = () => {
+    if (!currentSessionId) {
+      Alert.alert('Error', 'Please start a task session first');
+      return;
+    }
+    
     if (manualBarcode.trim()) {
-     saveScanToBackend({
-  barcode: manualBarcode.trim(),
-  timestamp: new Date().toISOString()
-}, 'SCAN');
-
+      setScannedBarcode(manualBarcode.trim());
       setManualInputVisible(false);
       setManualBarcode('');
       setStatusModalVisible(true);
@@ -200,45 +305,42 @@ export default function HomeScreen({ navigation, route }: any) {
       Alert.alert('Error', 'Please enter a barcode');
     }
   };
-  const handleStatusSelect = (status: 'Reparable' | 'Beyond Repair') => {
-    const newScreensScanned = screensScanned + 1;
-    setScreensScanned(newScreensScanned);
+  const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
+    if (!scannedBarcode) return;
     
-    if (status === 'Reparable') {
-      setReparable(reparable + 1);
+    const success = await saveScanToBackend(scannedBarcode, status);
+    if (success) {
+      const newScreensScanned = screensScanned + 1;
+      setScreensScanned(newScreensScanned);
+      
+      if (status === 'Reparable') {
+        setReparable(reparable + 1);
+      } else {
+        setBeyondRepair(beyondRepair + 1);
+      }
+      
+      setStatusModalVisible(false);
+      Alert.alert('Screen Scanned', `Barcode: ${scannedBarcode}\nStatus: ${status}\n\nReady for next scan.`);
     } else {
-      setBeyondRepair(beyondRepair + 1);
+      Alert.alert('Error', 'Failed to save scan. Please try again.');
     }
-    
-    saveScanToBackend({
-  barcode: scannedBarcode,
-  status,
-  timestamp: new Date().toISOString()
-}, 'STATUS_UPDATE');
-
-    
-    setStatusModalVisible(false);
-    Alert.alert('Screen Scanned', `Barcode: ${scannedBarcode}\nStatus: ${status}\n\nReady for next scan.`);
   };
-  const handleStopTask = () => {
-    const endTime = new Date();
-    setSessionActive(false);
-    setEndTime(endTime);
-    setScanning(false);
-    setStatusModalVisible(false);
-    setManualInputVisible(false);
-    
-   saveScanToBackend({
-  endTime: endTime.toISOString(),
-  screensScanned,
-  reparable,
-  beyondRepair,
-  durationSeconds: elapsedSeconds
-}, 'SESSION_END');
-
-    Alert.alert('Session Ended', 
-      `Total screens: ${screensScanned}\nReparable: ${reparable}\nBeyond Repair: ${beyondRepair}\nDuration: ${formatElapsedTime(elapsedMilliseconds)}`
-    );
+  const handleStopTask = async () => {
+    const sessionData = await stopSession();
+    if (sessionData) {
+      const endTime = new Date();
+      setSessionActive(false);
+      setEndTime(endTime);
+      setScanning(false);
+      setStatusModalVisible(false);
+      setManualInputVisible(false);
+      
+      Alert.alert('Session Ended', 
+        `Total screens: ${screensScanned}\nReparable: ${reparable}\nBeyond Repair: ${beyondRepair}\nDuration: ${formatElapsedTime(elapsedMilliseconds)}`
+      );
+    } else {
+      Alert.alert('Error', 'Failed to stop session. Please try again.');
+    }
   };
   const handleLogout = () => {
     Alert.alert('Logout', 'You have been logged out.');
@@ -247,10 +349,11 @@ export default function HomeScreen({ navigation, route }: any) {
       routes: [{ name: 'Login' }], 
     });
   };
-  // Fetch user profile on component mount
+  // Fetch user profile and scan history on component mount
   useEffect(() => {
     if (token) {
       fetchUserProfile();
+      fetchScanHistory();
     }
   }, [token]);
 

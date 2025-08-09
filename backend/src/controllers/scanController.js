@@ -25,4 +25,62 @@ const addScan = async (req, res) => {
     }
 };
 exports.addScan = addScan;
+const getUserScans = async (req, res) => {
+    try {
+        const userId = req.userId;
+        // Get all sessions for this user
+        const sessions = await TaskSession_1.default.find({ technician: userId }).sort({ createdAt: -1 });
+        
+        if (!sessions.length) {
+            return res.json({ sessions: [], totalScans: 0 });
+        }
+        
+        // Get all screens for these sessions
+        const sessionIds = sessions.map(session => session._id);
+        const screens = await Screen_1.default.find({ session: { $in: sessionIds } })
+            .populate('session')
+            .sort({ timestamp: -1 });
+        
+        // Group screens by session
+        const sessionsWithScans = sessions.map(session => {
+            const sessionScans = screens.filter(screen => 
+                screen.session._id.toString() === session._id.toString()
+            );
+            
+            const reparable = sessionScans.filter(scan => scan.status === 'Reparable').length;
+            const beyondRepair = sessionScans.filter(scan => scan.status === 'Beyond Repair').length;
+            
+            return {
+                id: session._id,
+                startTime: session.startTime,
+                endTime: session.endTime,
+                totalScans: sessionScans.length,
+                reparable,
+                beyondRepair,
+                scans: sessionScans.map(scan => ({
+                    id: scan._id,
+                    barcode: scan.barcode,
+                    status: scan.status,
+                    timestamp: scan.timestamp
+                }))
+            };
+        });
+        
+        const totalScans = screens.length;
+        const totalReparable = screens.filter(scan => scan.status === 'Reparable').length;
+        const totalBeyondRepair = screens.filter(scan => scan.status === 'Beyond Repair').length;
+        
+        return res.json({
+            sessions: sessionsWithScans,
+            totalScans,
+            totalReparable,
+            totalBeyondRepair
+        });
+    }
+    catch (err) {
+        console.error('❌ getUserScans error:', err);
+        return res.status(500).json({ error: 'Could not get scan history', details: err.message });
+    }
+};
+exports.getUserScans = getUserScans;
 //# sourceMappingURL=scanController.js.map
