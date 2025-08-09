@@ -46,4 +46,24 @@ const login = async (req, res) => {
     }
 };
 exports.login = login;
+const getProfile = async (req, res) => {
+    try {
+        const user = await User_1.default.findById(req.userId).select('-password');
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        return res.json({
+            id: user._id,
+            username: user.username,
+            department: user.department,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt
+        });
+    }
+    catch (err) {
+        console.error('❌ Get profile error:', err);
+        return res.status(500).json({ error: 'Server error', details: err.message });
+    }
+};
+exports.getProfile = getProfile;
 //# sourceMappingURL=authController.js.map

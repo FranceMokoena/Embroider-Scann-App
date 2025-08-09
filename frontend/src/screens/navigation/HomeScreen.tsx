@@ -34,16 +34,42 @@ export default function HomeScreen({ navigation, route }: any) {
   const [elapsedMilliseconds, setElapsedMilliseconds] = useState(0);
   const [scans, setScans] = useState([]);
   const [loading, setLoading] = useState(true);
-  const token = route.params?.token;
-  // User data and API configuration
-  const user = route.params?.user || {
-    name: 'Unknown',
-    surname: 'User',
-    department: 'Unknown Department',
-    task: 'Unknown Task',
+  const [user, setUser] = useState({
+    username: 'Loading...',
+    department: 'Loading...',
     avatar: '👨‍🔧'
+  });
+  const token = route.params?.token;
+  const API_BASE_URL = 'https://embroider-scann-app.onrender.com';
+
+  // Fetch user profile data
+  const fetchUserProfile = async () => {
+    try {
+      console.log('🔄 Fetching user profile...');
+      const response = await fetch(`${API_BASE_URL}/api/auth/profile`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('✅ User profile fetched:', userData);
+        setUser({
+          username: userData.username,
+          department: userData.department,
+          avatar: '👨‍🔧' // You can add avatar logic later
+        });
+      } else {
+        console.error('❌ Failed to fetch user profile:', response.status);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching user profile:', error);
+    }
   };
-  const API_BASE_URL = 'https://scanning-backend-server-p3re.vercel.app';
+
   // Fetch operations when screen is focused
  const saveScanToBackend = async (scanData: any, operationType = 'SCAN') => {
   try {
@@ -221,6 +247,13 @@ export default function HomeScreen({ navigation, route }: any) {
       routes: [{ name: 'Login' }], 
     });
   };
+  // Fetch user profile on component mount
+  useEffect(() => {
+    if (token) {
+      fetchUserProfile();
+    }
+  }, [token]);
+
   // Timer Effect
   useEffect(() => {
   if (sessionActive) {
@@ -254,14 +287,14 @@ export default function HomeScreen({ navigation, route }: any) {
         {/* User Profile Section */}
         <View style={styles.userBox}>
           <Text style={styles.avatar}>{user.avatar}</Text>
-          <Text style={styles.userName}>{user.name} {user.surname}</Text>
+          <Text style={styles.userName}>{user.username}</Text>
           <View style={styles.userDetailRow}>
             <Ionicons name="business-outline" size={16} color="#555" />
             <Text style={styles.userDetailText}>{user.department}</Text>
           </View>
           <View style={styles.userDetailRow}>
             <Ionicons name="construct-outline" size={16} color="#555" />
-            <Text style={styles.userDetailText}>{user.task}</Text>
+            <Text style={styles.userDetailText}>Screen Scanning Tasks</Text>
           </View>
         </View>
 

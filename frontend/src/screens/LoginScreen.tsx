@@ -1,5 +1,3 @@
-// src/screens/LoginScreen.tsx
-
 import React, { useState } from 'react';
 import {
   View,
@@ -23,37 +21,70 @@ const colorPalette = {
   light: '#FFFFFF',
 };
 
+const BACKEND_URL = 'https://embroider-scann-app.onrender.com'; // Use your Render backend URL
+
 export default function LoginScreen({ navigation }: any) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async () => {
+    console.log('🔄 Login attempt started');
+    console.log('Username:', username);
+    console.log('Password length:', password.length);
+    
     if (!username || !password) {
       Toast.show({ type: 'error', text1: 'Enter both username & password' });
       return;
     }
 
     setIsLoading(true);
+    console.log('🔄 Loading state set to true');
 
     try {
-      const res = await fetch('https://YOUR_VERCEL_URL/api/auth/login', {
-        method: 'POST',
+      console.log('🌐 Making fetch request to:', `${BACKEND_URL}/api/auth/login`);
+      
+      const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
+        method: 'POST', // Only POST for login
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
-      const data = await res.json();
+
+      console.log('📡 Response received:', res.status, res.statusText);
+      console.log('📡 Response headers:', res.headers);
+
+      // Check if response is JSON before parsing
+      const contentType = res.headers.get('content-type');
+      console.log('📡 Content-Type:', contentType);
+      let data;
+      
+      if (contentType && contentType.includes('application/json')) {
+        console.log('✅ Parsing JSON response');
+        data = await res.json();
+        console.log('📦 Parsed data:', data);
+      } else {
+        // If not JSON, get text for debugging
+        console.log('❌ Non-JSON response detected');
+        const text = await res.text();
+        console.log('Non-JSON response:', text);
+        data = { error: 'Server returned non-JSON response' };
+      }
 
       if (res.ok) {
+        console.log('✅ Login successful, storing token');
         await AsyncStorage.setItem('token', data.token);
         Toast.show({ type: 'success', text1: 'Welcome Back!' });
+        console.log('🚀 Navigating to Home screen');
         navigation.replace('Home', { token: data.token });
       } else {
-        Toast.show({ type: 'error', text1: data.error || 'Login failed' });
+        console.log('❌ Login failed:', data.error);
+        Toast.show({ type: 'error', text1: data.error || `Login failed (${res.status})` });
       }
-    } catch {
-      Toast.show({ type: 'error', text1: 'Network error' });
+    } catch (error) {
+      console.error('💥 Login error:', error);
+      Toast.show({ type: 'error', text1: 'Network error or server unreachable.' });
     } finally {
+      console.log('🏁 Setting loading to false');
       setIsLoading(false);
     }
   };
