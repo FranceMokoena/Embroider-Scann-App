@@ -33,6 +33,7 @@ export default function RegisterScreen({ navigation }: any) {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [termsVisible, setTermsVisible] = useState(false);
   
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -229,12 +230,9 @@ export default function RegisterScreen({ navigation }: any) {
   };
 
   const handleTermsPress = () => {
-    Alert.alert(
-      'Terms of Service',
-      'By creating an account, you agree to our terms of service and privacy policy.',
-      [{ text: 'OK', style: 'default' }]
-    );
-  };
+  setTermsVisible(true);
+  
+};
 
   return (
     <SafeAreaView style={styles.container}>
@@ -260,19 +258,8 @@ export default function RegisterScreen({ navigation }: any) {
               }
             ]}
           >
-            {/* Header with Back Button */}
-            <View style={styles.headerContainer}>
-              <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => navigation.goBack()}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="arrow-back" size={24} color="#6366f1" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Professional Header */}
-            <Animated.View 
+            {/* Header */}
+            <Animated.View
               style={[
                 styles.header,
                 { transform: [{ scale: logoScale }] }
@@ -280,24 +267,24 @@ export default function RegisterScreen({ navigation }: any) {
             >
               <View style={styles.logoContainer}>
                 <View style={styles.logoIconContainer}>
-                  <Ionicons name="person-add" size={48} color="#6366f1" />
+                  <Ionicons name="scan-circle" size={48} color="#6366f1" />
                 </View>
-                <Text style={styles.logoText}>Create Account</Text>
-                <Text style={styles.logoSubtitle}>Join TechScan today</Text>
+                <Text style={styles.logoText}>Embroidery-Tech</Text>
+                <Text style={styles.logoSubtitle}>Professional Screen Management</Text>
               </View>
             </Animated.View>
 
             {/* Enhanced Form Container */}
             <View style={styles.formContainer}>
               <View style={styles.formHeader}>
-                <Ionicons name="person-add-outline" size={32} color="#6366f1" />
-                <Text style={styles.formTitle}>Sign Up</Text>
-                <Text style={styles.formSubtitle}>Create your account to get started</Text>
+                <Ionicons name="log-in-outline" size={32} color="#6366f1" />
+                <Text style={styles.formTitle}>Create Account</Text>
+                <Text style={styles.formSubtitle}>Sign up to your account to continue</Text>
               </View>
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Username</Text>
-                <View style={[styles.inputContainer, username ? styles.inputFocused : null]}>
+                <View style={[styles.inputContainer, username.trim() ? styles.inputFocused : null]}>
                   <Ionicons name="person-outline" size={20} color="#64748b" style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
@@ -315,7 +302,7 @@ export default function RegisterScreen({ navigation }: any) {
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Email</Text>
-                <View style={[styles.inputContainer, email ? styles.inputFocused : null]}>
+                <View style={[styles.inputContainer, email.trim() ? styles.inputFocused : null]}>
                   <Ionicons name="mail-outline" size={20} color="#64748b" style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
@@ -334,7 +321,7 @@ export default function RegisterScreen({ navigation }: any) {
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Department</Text>
-                <View style={[styles.inputContainer, department ? styles.inputFocused : null]}>
+                <View style={[styles.inputContainer, department.trim() ? styles.inputFocused : null]}>
                   <Ionicons name="business-outline" size={20} color="#64748b" style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
@@ -433,29 +420,19 @@ export default function RegisterScreen({ navigation }: any) {
                 <View style={styles.dividerLine} />
               </View>
 
-              <TouchableOpacity
-                style={styles.loginButton}
-                onPress={() => navigation.navigate('Login')}
-                activeOpacity={0.8}
-              >
-                <View style={styles.loginButtonContent}>
-                  <Ionicons name="log-in-outline" size={20} color="#6366f1" />
-                  <Text style={styles.loginButtonText}>Sign In</Text>
-                </View>
-              </TouchableOpacity>
+              {/* Register link */}
+                           <View style={styles.registerRow}>
+                             <Text style={styles.loginButtonText}>Don't have an account? </Text>
+                             <Text
+                               style={styles.loginButtonContent}
+                               onPress={() => navigation.navigate('Login')}
+                               suppressHighlighting
+                             >
+                               Sign in
+                             </Text>
+                           </View>
 
-              <View style={styles.footer}>
-                <Text style={styles.footerText}>
-                  By creating an account, you agree to our{' '}
-                  <Text style={styles.footerLink} onPress={handleTermsPress}>
-                    Terms of Service
-                  </Text>
-                  {' '}and{' '}
-                  <Text style={styles.footerLink} onPress={handleTermsPress}>
-                    Privacy Policy
-                  </Text>
-                </Text>
-              </View>
+             
             </View>
           </Animated.View>
         </ScrollView>
@@ -615,8 +592,8 @@ const styles = StyleSheet.create({
   registerButton: {
     backgroundColor: '#6366f1',
     borderRadius: 16,
-    paddingVertical: 18,
-    marginBottom: 24,
+    paddingVertical: 10,
+    marginBottom: 10,
     shadowColor: '#6366f1',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
@@ -666,6 +643,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   loginButton: {
+    color: '#6366f1',
     borderWidth: 2,
     borderColor: '#e2e8f0',
     borderRadius: 16,
@@ -674,6 +652,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   loginButtonContent: {
+    color: '#6366f1',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -684,6 +663,34 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 8,
   },
+registerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 3,
+    paddingVertical: 0,
+  },
+  registerPrompt: {
+    fontSize: 15,
+    color: '#64748b',
+    fontWeight: '400',
+  },
+  registerLink: {
+    fontSize: 15,
+    color: '#6366f1',
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+
+
+
+
+
+
+
+
+
+
   footer: {
     alignItems: 'center',
   },

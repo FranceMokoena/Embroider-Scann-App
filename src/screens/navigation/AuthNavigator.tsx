@@ -1,6 +1,5 @@
 //AUTHNAVIGATOR
 import React from 'react';
-
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 // Both screens are in src/screens, so go up one level from navigation folder, then into screens folder

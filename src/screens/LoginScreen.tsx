@@ -5,9 +5,9 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
+  Modal,
   ActivityIndicator,
   StatusBar,
   Dimensions,
@@ -19,6 +19,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaView } from 'react-native-safe-area-context';  
+
 
 const { height } = Dimensions.get('window');
 
@@ -30,6 +32,11 @@ export default function LoginScreen({ navigation }: any) {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const passwordRef = useRef(null);
+ const [termsVisible, setTermsVisible] = useState(false);
+ const [ForgotPassVisible,setForgotPassVisible] =useState(false);
+
+  
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -143,26 +150,32 @@ console.log("🚀 LoginScreen UPDATED VERSION is running!");
     }
   };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const handleForgotPassword = () => {
-    Alert.alert(
-      'Forgot Password',
-      'Please contact your administrator to reset your password.',
-      [{ text: 'OK', style: 'default' }]
-      
-    );
+    setForgotPassVisible(true);
     console.log("🚀 LoginScreen UPDATED VERSION is running!");
 
   };
 
-  const handleTermsPress = () => {
-    Alert.alert(
-      'Terms of Service',
-      'By using this application, you agree to our terms of service and privacy policy.',
-      [{ text: 'OK', style: 'default' }]
-    );
-    console.log("🚀 LoginScreen UPDATED VERSION is running!");
+  const handleTermsPress = () => {//const [termsVisible, setTermsVisible] = useState(false);
+  setTermsVisible(true);
+  console.log("🚀 LoginScreen UPDATED VERSION is running!");
+};
 
-  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -206,44 +219,50 @@ console.log("🚀 LoginScreen UPDATED VERSION is running!");
 
             {/* Form */}
             <View style={styles.formContainer}>
-              <View style={styles.formHeader}>
-                <Ionicons name="log-in-outline" size={32} color="#6366f1" />
-                <Text style={styles.formTitle}>Welcome Back</Text>
-                <Text style={styles.formSubtitle}>Sign in to your account to continue</Text>
-              </View>
+                             <View style={styles.formHeader}>
+                 <Ionicons name="log-in-outline" size={32} color="#6366f1" />
+                 <Text style={styles.formTitle}>Welcome Back</Text>
+                 
+               </View>
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Username</Text>
-                <View style={[styles.inputContainer, username ? styles.inputFocused : null]}>
+                                 <View style={[styles.inputContainer, username.trim() ? styles.inputFocused : null]}>
                   <Ionicons name="person-outline" size={20} color="#64748b" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter your username"
-                    placeholderTextColor="#94a3b8"
-                    autoCapitalize="none"
-                    onChangeText={setUsername}
-                    value={username}
-                    autoCorrect={false}
-                    returnKeyType="next"
-                    blurOnSubmit={false}
-                  />
+                                     <TextInput
+                     style={styles.input}
+                     placeholder="Enter your username"
+                     placeholderTextColor="#94a3b8"
+                     autoCapitalize="none"
+                     onChangeText={setUsername}
+                     value={username}
+                     autoCorrect={false}
+                     returnKeyType="next"
+                     blurOnSubmit={false}
+                     onSubmitEditing={() => {
+                       // Small delay to prevent jumping
+                       setTimeout(() => passwordRef.current?.focus(), 50);
+                     }}
+                   />
                 </View>
               </View>
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Password</Text>
-                <View style={[styles.inputContainer, password ? styles.inputFocused : null]}>
+                                 <View style={[styles.inputContainer, password.trim() ? styles.inputFocused : null]}>
                   <Ionicons name="lock-closed-outline" size={20} color="#64748b" style={styles.inputIcon} />
                   <TextInput
-                    style={styles.input}
-                    placeholder="your password"
-                    placeholderTextColor="#94a3b8"
-                    secureTextEntry={!showPassword}
-                    onChangeText={setPassword}
-                    value={password}
-                    autoCorrect={false}
-                    returnKeyType="done"
-                    onSubmitEditing={handleLogin}
+                    ref={passwordRef}
+  style={styles.input}
+  placeholder="Enter your password"
+  placeholderTextColor="#94a3b8"
+  secureTextEntry={!showPassword}
+  onChangeText={setPassword}
+  value={password}
+  autoCorrect={false}
+  autoCapitalize="none"
+  returnKeyType="done"
+  onSubmitEditing={handleLogin}
                   />
                   <TouchableOpacity
                     style={styles.passwordToggle}
@@ -287,6 +306,73 @@ console.log("🚀 LoginScreen UPDATED VERSION is running!");
                 )}
               </TouchableOpacity>
 
+
+<Modal
+  visible={termsVisible}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setTermsVisible(false)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+      <Text style={styles.modalTitle}>Terms of Service</Text>
+      <Text style={styles.modalMessage}>
+        By using this application, you agree to our Terms of Service and Privacy Policy.
+      </Text>
+      <TouchableOpacity style={styles.modalButton} onPress={() => setTermsVisible(false)}>
+        <Text style={styles.modalButtonText}>OK</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+
+
+<Modal
+  visible={ForgotPassVisible}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setForgotPassVisible(false)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+      <Text style={styles.modalTitle}>❌ Forgot Password!</Text>
+      <Text style={styles.modalMessage}>
+        Please Contact Your Administrator to request a new password or enter correct crenditials
+      </Text>
+      <TouchableOpacity style={styles.modalButton} onPress={() => setForgotPassVisible(false)}>
+        <Text style={styles.modalButtonText}>OK</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
               {/* Register link */}
               <View style={styles.registerRow}>
                 <Text style={styles.registerPrompt}>Don't have an account? </Text>
@@ -325,6 +411,51 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f9fa',
   },
+modalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.5)',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+modalContent: {
+  width: '80%',
+  backgroundColor: '#fff',
+  borderRadius: 16,
+  padding: 24,
+  elevation: 10,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 4,
+},
+modalTitle: {
+  fontSize: 22,
+  fontWeight: '700',
+  color: '#1e293b',
+  marginBottom: 12,
+  textAlign: 'center',
+},
+modalMessage: {
+  fontSize: 16,
+  color: '#475569',
+  marginBottom: 24,
+  lineHeight: 22,
+  textAlign: 'center',
+},
+modalButton: {
+  backgroundColor: '#6366f1',
+  borderRadius: 12,
+  paddingVertical: 12,
+  alignItems: 'center',
+},
+modalButtonText: {
+  color: '#fff',
+  fontSize: 16,
+  fontWeight: '600',
+},
+
+
+
   keyboardView: {
     flex: 1,
   },
@@ -359,7 +490,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 16,
     shadowColor: '#6366f1',
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 0},
     shadowOpacity: 0.15,
     shadowRadius: 16,
     elevation: 8,
@@ -368,7 +499,7 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '800',
     color: '#1e293b',
-    marginBottom: 8,
+    marginBottom: 1,
     letterSpacing: -1,
   },
   logoSubtitle: {
@@ -382,14 +513,14 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 32,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.08,
-    shadowRadius: 25,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 30,
+    shadowRadius: 30,
     elevation: 10,
   },
   formHeader: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 4,
   },
   formTitle: {
     fontSize: 24,
@@ -420,19 +551,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#f8fafc',
     borderRadius: 16,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: '#e2e8f0',
     paddingHorizontal: 16,
-    paddingVertical: 4,
+    
   },
   inputFocused: {
     borderColor: '#6366f1',
     backgroundColor: '#fefefe',
     shadowColor: '#6366f1',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+   
+   
+    shadowRadius: 22,
+    elevation: 9,
   },
   inputIcon: {
     marginRight: 12,
@@ -450,18 +581,18 @@ const styles = StyleSheet.create({
   },
   forgotPassword: {
     alignSelf: 'flex-end',
-    marginBottom: 24,
+    marginBottom: 5,
   },
   forgotPasswordText: {
     color: '#6366f1',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '300',
   },
   loginButton: {
     backgroundColor: '#6366f1',
     borderRadius: 16,
-    paddingVertical: 18,
-    marginBottom: 16,
+    paddingVertical: 10,
+    marginBottom: 10,
     shadowColor: '#6366f1',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
@@ -499,8 +630,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
-    paddingVertical: 8,
+    marginBottom: 3,
+    paddingVertical: 0,
   },
   registerPrompt: {
     fontSize: 15,
