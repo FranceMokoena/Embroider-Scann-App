@@ -1,8 +1,9 @@
-//src/controllers/authController.js
-import bcrypt from 'bcryptjs';
-import User from '../models/User.js';
+// src/controllers/authController.js
+const bcrypt = require('bcryptjs');
+const User = require('../models/User');
 
-export const listUsers = async (req, res) => {
+// List users
+const listUsers = async (req, res) => {
   try {
     const { department, q, page = 1, limit = 50 } = req.query;
     const match = {};
@@ -22,7 +23,8 @@ export const listUsers = async (req, res) => {
   }
 };
 
-export const createUser = async (req, res) => {
+// Create user
+const createUser = async (req, res) => {
   try {
     const { department, username, password, name, surname, email, role = 'technician' } = req.body;
     if (!department || !username || !password) {
@@ -42,7 +44,8 @@ export const createUser = async (req, res) => {
   }
 };
 
-export const updateUser = async (req, res) => {
+// Update user
+const updateUser = async (req, res) => {
   try {
     const id = req.params.id;
     const updates = { ...req.body };
@@ -61,7 +64,8 @@ export const updateUser = async (req, res) => {
   }
 };
 
-export const deleteUser = async (req, res) => {
+// Deactivate user
+const deleteUser = async (req, res) => {
   try {
     const id = req.params.id;
     const user = await User.findByIdAndUpdate(id, { isActive: false }, { new: true }).select('-password');
@@ -71,4 +75,12 @@ export const deleteUser = async (req, res) => {
     console.error('❌ deleteUser error:', err);
     return res.status(500).json({ error: 'Server error' });
   }
+};
+
+// Export all functions
+module.exports = {
+  listUsers,
+  createUser,
+  updateUser,
+  deleteUser
 };
