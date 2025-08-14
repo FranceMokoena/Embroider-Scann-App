@@ -2914,7 +2914,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                     <Ionicons name="trash" size={20} color="#ffffff" />
                   )}
                   <Text style={styles.proceedDeleteButtonText}>
-                    {isDeletingScreens ? 'Deleting...' : 'Proceed'}
+                    {isDeletingScreens ? 'Deleting...' : 'OK'}
                   </Text>
                 </TouchableOpacity>
               </View>
