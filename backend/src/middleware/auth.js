@@ -1,12 +1,15 @@
-import jwt from 'jsonwebtoken';
+// src/middleware/auth.js
+"use strict";
+
+const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const DESKTOP_SERVICE_TOKEN = process.env.DESKTOP_SERVICE_TOKEN;
 
-export const requireAuth = (req, res, next) => {
+const requireAuth = (req, res, next) => {
   const auth = req.headers.authorization;
 
-  if (!auth?.startsWith('Bearer ')) {
+  if (!auth || !auth.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Missing or invalid Authorization header' });
   }
 
@@ -33,9 +36,14 @@ export const requireAuth = (req, res, next) => {
   }
 };
 
-export const requireAdmin = (req, res, next) => {
+const requireAdmin = (req, res, next) => {
   if (!req.isAdmin) {
     return res.status(403).json({ error: 'Admin privileges required' });
   }
   next();
+};
+
+module.exports = {
+  requireAuth,
+  requireAdmin,
 };
