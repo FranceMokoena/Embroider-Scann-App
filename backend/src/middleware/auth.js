@@ -14,20 +14,28 @@ export const requireAuth = (req, res, next) => {
 
   // Allow desktop service token
   if (token === DESKTOP_SERVICE_TOKEN) {
-    req.userId = 'desktop-service'; // mark as desktop
+    req.userId = 'desktop-service';
+    req.isAdmin = true; // desktop always admin
     return next();
   }
 
-  // Otherwise, verify normal JWT
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     if (!payload || typeof payload.userId !== 'string') {
       throw new Error('Invalid token payload');
     }
     req.userId = payload.userId;
+    req.isAdmin = !!payload.isAdmin;
     next();
   } catch (err) {
     console.error('❌ requireAuth error:', err);
     return res.status(403).json({ error: 'Invalid or expired token' });
   }
+};
+
+export const requireAdmin = (req, res, next) => {
+  if (!req.isAdmin) {
+    return res.status(403).json({ error: 'Admin privileges required' });
+  }
+  next();
 };
