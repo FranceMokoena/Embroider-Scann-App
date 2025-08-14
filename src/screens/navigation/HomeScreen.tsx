@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import Toast from 'react-native-toast-message';
 
 const { width } = Dimensions.get('window');
 
@@ -28,6 +29,7 @@ export default function HomeScreen({ navigation, route }: any) {
   const [screensScanned, setScreensScanned] = useState(0);
   const [reparable, setReparable] = useState(0);
   const [beyondRepair, setBeyondRepair] = useState(0);
+  const [healthy, setHealthy] = useState(0);
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [endTime, setEndTime] = useState<Date | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -45,6 +47,8 @@ export default function HomeScreen({ navigation, route }: any) {
   const [displayLimit, setDisplayLimit] = useState(5);
   const [user, setUser] = useState({
     username: 'Loading...',
+    email: 'Loading...',
+    role: 'Loading...',
     department: 'Loading...',
     avatar: '👨‍🔧'
   });
@@ -53,12 +57,16 @@ export default function HomeScreen({ navigation, route }: any) {
     sessions: [],
     totalScans: 0,
     totalReparable: 0,
-    totalBeyondRepair: 0
+    totalBeyondRepair: 0,
+    totalHealthy: 0
   });
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [adminEmail, setAdminEmail] = useState('');
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-  const [isSendingEmail, setIsSendingEmail] = useState(false);
+const [isGeneratingDailyReport, setIsGeneratingDailyReport] = useState(false);
+const [isGeneratingWeeklyReport, setIsGeneratingWeeklyReport] = useState(false);
+const [isGeneratingMonthlyReport, setIsGeneratingMonthlyReport] = useState(false);
+const [isSendingEmail, setIsSendingEmail] = useState(false);
   const token = route.params?.token;
   const API_BASE_URL = 'https://embroider-scann-app.onrender.com';
 const [statusModalTitle, setStatusModalTitle] = useState('');
@@ -66,6 +74,16 @@ const [statusModalMessage, setStatusModalMessage] = useState('');
 const [reportsView, setReportsView] = useState<'daily' | 'weekly' | 'monthly'>('daily');
 const [reportsData, setReportsData] = useState<any>(null);
 const [loadingReports, setLoadingReports] = useState(false);
+const [reportsFilter, setReportsFilter] = useState<'all' | 'reparable' | 'beyondRepair' | 'healthy'>('all');
+  const [endSessionModalVisible, setEndSessionModalVisible] = useState(false);
+  const [modalButtonLoading, setModalButtonLoading] = useState(false);
+const [isStartingSession, setIsStartingSession] = useState(false);
+const [isEndingSession, setIsEndingSession] = useState(false);
+  
+  // New state for clickable stats
+  const [defectiveScreensModalVisible, setDefectiveScreensModalVisible] = useState(false);
+  const [nonDefectiveScreensModalVisible, setNonDefectiveScreensModalVisible] = useState(false);
+  const [selectedDefectiveType, setSelectedDefectiveType] = useState<'Reparable' | 'Beyond Repair' | 'Healthy' | null>(null);
 
 
 
@@ -105,6 +123,8 @@ const [loadingReports, setLoadingReports] = useState(false);
         console.log('✅ User profile fetched:', userData);
         setUser({
           username: userData.username,
+          email: userData.email || 'Not provided',
+          role: userData.role || 'Technician',
           department: userData.department,
           avatar: '👨‍🔧' // You can add avatar logic later
         });
@@ -138,6 +158,28 @@ const [loadingReports, setLoadingReports] = useState(false);
         setScreensScanned(historyData.totalScans || 0);
         setReparable(historyData.totalReparable || 0);
         setBeyondRepair(historyData.totalBeyondRepair || 0);
+        setHealthy(historyData.totalHealthy || 0);
+        
+        // Populate the scans array with actual scan data for the modals
+        if (historyData.sessions && historyData.sessions.length > 0) {
+          // Flatten all scans from all sessions and add date field
+          const allScans = historyData.sessions
+            .flatMap(session =>
+              session.scans.map(scan => ({
+                ...scan,
+                date: scan.timestamp || new Date().toISOString(),
+                barcode: scan.barcode || scan.screenId || 'Unknown',
+                status: scan.status || 'Unknown'
+              }))
+            )
+            .filter(scan => scan.barcode !== 'Unknown' && scan.status !== 'Unknown')
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort newest first
+          
+          console.log('📱 Populated scans array with:', allScans.length, 'scans');
+          setScans(allScans);
+        } else {
+          setScans([]);
+        }
       } else {
         console.error('❌ Failed to fetch scan history:', response.status);
       }
@@ -200,12 +242,14 @@ const fetchReportsData = async (period: 'daily' | 'weekly' | 'monthly') => {
     const totalScans = filteredScans.length;
     const reparable = filteredScans.filter(scan => scan.status === 'Reparable').length;
     const beyondRepair = filteredScans.filter(scan => scan.status === 'Beyond Repair').length;
+    const healthy = filteredScans.filter(scan => scan.status === 'Healthy').length;
 
     // Prepare report data
     const data = {
       totalScans,
       reparable,
       beyondRepair,
+      healthy,
       scanChange: 0, // Placeholder for comparison logic
       reparableChange: 0,
       beyondRepairChange: 0,
@@ -371,6 +415,7 @@ const isSameMonth = (date1: Date, date2: Date) => {
       });
       
       const result = await response.json();
+      console.log('🔍 Backend response:', { status: response.status, result });
       if (!response.ok) {
         throw new Error(result.error || 'Failed to save scan');
       }
@@ -624,6 +669,145 @@ const isSameMonth = (date1: Date, date2: Date) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  // Generate Daily Report from Reports Analysis data (uses current reportsData)
+  const generateDailyReportHTML = () => {
+    const currentDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    const scans = reportsData?.scans || [];
+
+    const scansRows = scans.map((scan: any) => `
+      <tr>
+        <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${scan.barcode}</td>
+        <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${scan.status}</td>
+        <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${new Date(scan.date).toLocaleDateString('en-US')}</td>
+        <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${new Date(scan.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</td>
+      </tr>
+    `).join('');
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Daily Report - ${user.username}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+          .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #6366f1; padding-bottom: 20px; }
+          .logo { font-size: 24px; font-weight: bold; color: #6366f1; margin-bottom: 10px; }
+          .subtitle { color: #666; font-size: 16px; }
+          .summary { background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
+          .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 15px; }
+          .summary-item { text-align: center; }
+          .summary-number { font-size: 24px; font-weight: bold; color: #6366f1; }
+          .summary-label { color: #666; margin-top: 5px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+          th { background-color: #f8f9fa; font-weight: bold; }
+          .footer { margin-top: 40px; text-align: center; color: #999; font-size: 12px; border-top: 1px solid #eee; padding-top: 20px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="logo">Daily Report</div>
+          <div class="subtitle">${user.username} • ${user.department} • ${currentDate}</div>
+        </div>
+        <div class="summary">
+          <h2 style="color: #333; margin-bottom: 15px;">Summary</h2>
+          <div class="summary-grid">
+            <div class="summary-item">
+              <div class="summary-number">${reportsData?.totalScans || 0}</div>
+              <div class="summary-label">Total Scans</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-number">${reportsData?.reparable || 0}</div>
+              <div class="summary-label">Reparable</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-number">${reportsData?.beyondRepair || 0}</div>
+              <div class="summary-label">Beyond Repair</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-number">${reportsData?.healthy || 0}</div>
+              <div class="summary-label">Healthy</div>
+            </div>
+          </div>
+        </div>
+        <h2 style="color: #333; margin-bottom: 20px;">Scans</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Barcode</th>
+              <th>Status</th>
+              <th>Date</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${scansRows || '<tr><td colspan="4" class="no-data">No scans for this day</td></tr>'}
+          </tbody>
+        </table>
+        <div class="footer">
+          <p>Embroidery-Tech Professional Screen Management System</p>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
+  const generateDailyPDFReport = async () => {
+    try {
+      const html = generateDailyReportHTML();
+      const file = await Print.printToFileAsync({ html, base64: false });
+      return file.uri;
+    } catch (e) {
+      console.error('❌ Error generating daily PDF:', e);
+      return null;
+    }
+  };
+
+  const handleGenerateDailyReport = async () => {
+    try {
+      setIsGeneratingDailyReport(true);
+      const pdfPath = await generateDailyPDFReport();
+      if (pdfPath) {
+        await Sharing.shareAsync(pdfPath, {
+          mimeType: 'application/pdf',
+          dialogTitle: `Daily Report - ${user.username} - ${new Date().toLocaleDateString()}`,
+          UTI: 'com.adobe.pdf'
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error generating daily report:', error);
+      Alert.alert('Error', 'Failed to generate daily report. Please try again.');
+    } finally {
+      setIsGeneratingDailyReport(false);
+    }
+  };
+
+
+
   const sendReportViaEmail = async (pdfPath: string, email: string) => {
     try {
       setIsSendingEmail(true);
@@ -658,24 +842,342 @@ const isSameMonth = (date1: Date, date2: Date) => {
     }
   };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const generateMonthlyReportHTML = () => {
+  const now = new Date();
+  const monthName = now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+  const scans = (reportsData?.scans || []).filter((scan: any) => {
+    const scanDate = new Date(scan.date);
+    return scanDate.getMonth() === now.getMonth() && scanDate.getFullYear() === now.getFullYear();
+  });
+
+  const scansRows = scans.map((scan: any) => `
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${scan.barcode}</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${scan.status}</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${new Date(scan.date).toLocaleDateString('en-US')}</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${new Date(scan.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Monthly Report - ${user.username}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+          .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #6366f1; padding-bottom: 20px; }
+          .logo { font-size: 24px; font-weight: bold; color: #6366f1; margin-bottom: 10px; }
+          .subtitle { color: #666; font-size: 16px; }
+          .summary { background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
+          .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 15px; }
+          .summary-item { text-align: center; }
+          .summary-number { font-size: 24px; font-weight: bold; color: #6366f1; }
+          .summary-label { color: #666; margin-top: 5px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+          th { background-color: #f8f9fa; font-weight: bold; }
+          .footer { margin-top: 40px; text-align: center; color: #999; font-size: 12px; border-top: 1px solid #eee; padding-top: 20px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="logo">Monthly Report</div>
+          <div class="subtitle">${user.username} • ${user.department} • ${monthName}</div>
+        </div>
+        <div class="summary">
+          <h2 style="color: #333; margin-bottom: 15px;">Summary</h2>
+          <div class="summary-grid">
+            <div class="summary-item">
+              <div class="summary-number">${scans.length}</div>
+              <div class="summary-label">Total Scans</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-number">${scans.filter(s => s.status === 'Reparable').length}</div>
+              <div class="summary-label">Reparable</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-number">${scans.filter(s => s.status === 'Beyond Repair').length}</div>
+              <div class="summary-label">Beyond Repair</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-number">${scans.filter(s => s.status === 'Healthy').length}</div>
+              <div class="summary-label">Healthy</div>
+            </div>
+          </div>
+        </div>
+        <h2 style="color: #333; margin-bottom: 20px;">Scans</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Barcode</th>
+              <th>Status</th>
+              <th>Date</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${scansRows || '<tr><td colspan="4">No scans for this month</td></tr>'}
+          </tbody>
+        </table>
+        <div class="footer">
+          <p>Embroidery-Tech Professional Screen Management System</p>
+        </div>
+      </body>
+    </html>
+  `;
+};
+
+const generateMonthlyPDFReport = async () => {
+  try {
+    const html = generateMonthlyReportHTML();
+    const file = await Print.printToFileAsync({ html, base64: false });
+    return file.uri;
+  } catch (e) {
+    console.error('❌ Error generating monthly PDF:', e);
+    return null;
+  }
+};
+
+const handleGenerateMonthlyReport = async () => {
+  try {
+    setIsGeneratingMonthlyReport(true);
+    const pdfPath = await generateMonthlyPDFReport();
+    if (pdfPath) {
+      await Sharing.shareAsync(pdfPath, {
+        mimeType: 'application/pdf',
+        dialogTitle: `Monthly Report - ${user.username} - ${new Date().toLocaleDateString()}`,
+        UTI: 'com.adobe.pdf'
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error generating monthly report:', error);
+    Alert.alert('Error', 'Failed to generate monthly report. Please try again.');
+  } finally {
+    setIsGeneratingMonthlyReport(false);
+  }
+};
+
+
+//FOR WEEKLY REPORTS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+const generateWeeklyReportHTML = () => {
+  const now = new Date();
+
+  // Start of week (Monday)
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - now.getDay() + 1); // Monday as start
+
+  // End of week (Sunday)
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+  const scans = (reportsData?.scans || []).filter((scan: any) => {
+    const scanDate = new Date(scan.date);
+    return scanDate >= startOfWeek && scanDate <= endOfWeek;
+  });
+
+  const scansRows = scans.map((scan: any) => `
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${scan.barcode}</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${scan.status}</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${new Date(scan.date).toLocaleDateString('en-US')}</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${new Date(scan.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+              <title>Weekly Report - ${user.username}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+          .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #6366f1; padding-bottom: 20px; }
+          .logo { font-size: 24px; font-weight: bold; color: #6366f1; margin-bottom: 10px; }
+          .subtitle { color: #666; font-size: 16px; }
+          .summary { background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
+          .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 15px; }
+          .summary-item { text-align: center; }
+        .summary-number { font-size: 24px; font-weight: bold; color: #6366f1; }
+        .summary-label { color: #666; margin-top: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        th { background-color: #f8f9fa; font-weight: bold; }
+        .footer { margin-top: 40px; text-align: center; color: #999; font-size: 12px; border-top: 1px solid #eee; padding-top: 20px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="logo">Weekly Report</div>
+        <div class="subtitle">${user.username} • ${user.department} • ${startOfWeek.toLocaleDateString('en-US')} - ${endOfWeek.toLocaleDateString('en-US')}</div>
+      </div>
+      <div class="summary">
+        <h2 style="color: #333; margin-bottom: 15px;">Summary</h2>
+        <div class="summary-grid">
+          <div class="summary-item">
+            <div class="summary-number">${scans.length}</div>
+            <div class="summary-label">Total Scans</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-number">${scans.filter(s => s.status === 'Reparable').length}</div>
+            <div class="summary-label">Reparable</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-number">${scans.filter(s => s.status === 'Beyond Repair').length}</div>
+            <div class="summary-label">Beyond Repair</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-number">${scans.filter(s => s.status === 'Healthy').length}</div>
+            <div class="summary-label">Healthy</div>
+          </div>
+        </div>
+      </div>
+      <h2 style="color: #333; margin-bottom: 20px;">Scans</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Barcode</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${scansRows || '<tr><td colspan="4">No scans for this week</td></tr>'}
+        </tbody>
+      </table>
+      <div class="footer">
+        <p>Embroidery-Tech Professional Screen Management System</p>
+      </div>
+    </body>
+    </html>
+  `;
+};
+const generateWeeklyPDFReport = async () => {
+  try {
+    const html = generateWeeklyReportHTML();
+    const file = await Print.printToFileAsync({ html, base64: false });
+    return file.uri;
+  } catch (e) {
+    console.error('❌ Error generating weekly PDF:', e);
+    return null;
+  }
+};
+
+const handleGenerateWeeklyReport = async () => {
+  try {
+    setIsGeneratingWeeklyReport(true);
+    const pdfPath = await generateWeeklyPDFReport();
+    if (pdfPath) {
+      await Sharing.shareAsync(pdfPath, {
+        mimeType: 'application/pdf',
+        dialogTitle: `Weekly Report - ${user.username} - ${new Date().toLocaleDateString()}`,
+        UTI: 'com.adobe.pdf'
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error generating weekly report:', error);
+    Alert.alert('Error', 'Failed to generate weekly report. Please try again.');
+  } finally {
+    setIsGeneratingWeeklyReport(false);
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // Action Handlers
   const handleStartTask = async () => {
-    const sessionId = await startSession();
-    if (sessionId) {
-      const now = new Date();
-      setSessionActive(true);
-      setScreensScanned(0);
-      setReparable(0);
-      setBeyondRepair(0);
-      setStartTime(now);
-      setEndTime(null);
-      setScanning(true);
-      setElapsedSeconds(0);
-      setElapsedMilliseconds(0);
-      
-      console.log('✅ Task session started successfully');
-    } else {
+    try {
+      setIsStartingSession(true);
+      const sessionId = await startSession();
+      if (sessionId) {
+        const now = new Date();
+        setSessionActive(true);
+        setScreensScanned(0);
+        setReparable(0);
+        setBeyondRepair(0);
+        setStartTime(now);
+        setEndTime(null);
+        setScanning(true);
+        setElapsedSeconds(0);
+        setElapsedMilliseconds(0);
+        
+        console.log('✅ Task session started successfully');
+      } else {
+        Alert.alert('Error', 'Failed to start task session. Please try again.');
+      }
+    } catch (error) {
       Alert.alert('Error', 'Failed to start task session. Please try again.');
+    } finally {
+      setIsStartingSession(false);
     }
   };
 
@@ -712,11 +1214,11 @@ const isSameMonth = (date1: Date, date2: Date) => {
 
 
 // --- state (you already have these) ---
-const [savingStatus, setSavingStatus] = useState<null | 'Reparable' | 'Beyond Repair'>(null);
-const [savedStatus, setSavedStatus] = useState<null | 'Reparable' | 'Beyond Repair'>(null);
+const [savingStatus, setSavingStatus] = useState<null | 'Reparable' | 'Beyond Repair' | 'Healthy'>(null);
+const [savedStatus, setSavedStatus] = useState<null | 'Reparable' | 'Beyond Repair' | 'Healthy'>(null);
 
 // --- updated handler ---
-const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
+const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healthy') => {
   if (!scannedBarcode) return;
 
   setSavingStatus(status); // show spinner
@@ -730,7 +1232,8 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
     // update counters
     setScreensScanned(prev => prev + 1);
     if (status === 'Reparable') setReparable(prev => prev + 1);
-    else setBeyondRepair(prev => prev + 1);
+    else if (status === 'Beyond Repair') setBeyondRepair(prev => prev + 1);
+    else if (status === 'Healthy') setHealthy(prev => prev + 1);
 
     await fetchScanHistory();
 
@@ -767,20 +1270,25 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
 
 
   const handleStopTask = async () => {
-    const sessionData = await stopSession();
-    if (sessionData) {
-      const endTime = new Date();
-      setSessionActive(false);
-      setEndTime(endTime);
-      setScanning(false);
-      setStatusModalVisible(false);
-      setManualInputVisible(false);
-      
-      Alert.alert('Session Ended', 
-        `Total screens: ${screensScanned}\nReparable: ${reparable}\nBeyond Repair: ${beyondRepair}\nDuration: ${formatElapsedTime(elapsedMilliseconds)}`
-      );
-    } else {
+    try {
+      setIsEndingSession(true);
+      const sessionData = await stopSession();
+      if (sessionData) {
+        const endTime = new Date();
+        setSessionActive(false);
+        setEndTime(endTime);
+        setScanning(false);
+        setStatusModalVisible(false);
+        setManualInputVisible(false);
+        // Show nice summary modal instead of Alert
+        setEndSessionModalVisible(true);
+      } else {
+        Alert.alert('Error', 'Failed to stop session. Please try again.');
+      }
+    } catch (error) {
       Alert.alert('Error', 'Failed to stop session. Please try again.');
+    } finally {
+      setIsEndingSession(false);
     }
   };
 
@@ -790,6 +1298,13 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
       index: 0,
       routes: [{ name: 'Login' }], 
     });
+  };
+
+  // Handle defective type selection
+  const handleDefectiveTypeSelect = (type: 'Reparable' | 'Beyond Repair' | 'Healthy') => {
+    setSelectedDefectiveType(type);
+    // You can add navigation logic here to show screens with the selected status
+    console.log(`Selected defective type: ${type}`);
   };
 
   // Fetch user profile and scan history on component mount
@@ -851,29 +1366,37 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
             <Text style={styles.subtitle}>The Professional Screen Management</Text>
           </View>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={24} color="#64748b" />
+            <Ionicons name="log-out-outline" size={29} color="#64748b" />
           </TouchableOpacity>
         </View>
 
         {/* Enhanced User Profile Card */}
         <View style={styles.userCard}>
-          <View style={styles.userHeader}>
-            <View style={styles.avatarContainer}>
-              <Text style={styles.avatar}>{user.avatar}</Text>
-              <View style={styles.statusIndicator} />
+          <View style={styles.userCardHeader}>
+            <View style={styles.userHeader}>
+              <View style={styles.avatarContainer}>
+                <Text style={styles.avatar}>{user.avatar}</Text>
+                <View style={styles.statusIndicator} />
+              </View>
+              <View style={styles.userInfo}>
+                <Text style={styles.userName}>{user.username}</Text>
+                <Text style={styles.userRole}>{user.role}</Text>
+                <Text style={styles.userEmail}>{user.email}</Text>
+                
+              </View>
             </View>
-            <View style={styles.userInfo}>
-              <Text style={styles.userName}>{user.username}</Text>
-              <Text style={styles.userRole}>Technician</Text>
-              <View style={styles.userMeta}>
-                <View style={styles.userMetaItem}>
-                  <Ionicons name="business-outline" size={16} color="#64748b" />
-                  <Text style={styles.userMetaText}>{user.department}</Text>
-                </View>
-                <View style={styles.userMetaItem}>
-                  <Ionicons name="shield-checkmark-outline" size={16} color="blue" />
-                  <Text style={styles.userMetaText}>Verified</Text>
-                </View>
+      
+          </View>
+          
+          <View style={styles.userDetails}>
+            <View style={styles.userDetailRow}>
+              <View style={styles.userDetailItem}>
+                <Ionicons name="business-outline" size={18} color="#06b6d4" />
+                <Text style={styles.userDetailText}>{user.department}</Text>
+              </View>
+              <View style={styles.userDetailItem}>
+                <Ionicons name="shield-checkmark-outline" size={18} color="#10b981" />
+                <Text style={styles.userDetailText}>Verified</Text>
               </View>
             </View>
           </View>
@@ -881,46 +1404,63 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
 
         {/* Modern Stats Dashboard */}
         <View style={styles.statsGrid}>
+          
+          
+          <TouchableOpacity 
+            style={[styles.statCard, styles.successStat]}
+            onPress={() => setDefectiveScreensModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.statIconContainer}>
+              <Ionicons name="warning-outline" size={28} color="#f59e0b" />
+            </View>
+            <View style={styles.statContent}>
+              
+              
+              <Text style={styles.statLabel}>Defective Screens</Text>
+              <Text style={styles.statNumber}>{reparable + beyondRepair}</Text>
+              <Text style={styles.statTrend}>Click to view Screens</Text>
+            </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.statCard, styles.infoStat]}
+            onPress={() => setNonDefectiveScreensModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.statIconContainer}>
+              <Ionicons name="checkmark-circle-outline" size={28} color="#10b981" />
+            </View>
+            <View style={styles.statContent}>
+              
+              <Text style={styles.statLabel}>HEALTHY Screens</Text>
+              <Text style={styles.statNumber}>{healthy}</Text>
+              <Text style={styles.statTrend}>Click to view Screens</Text>
+            </View>
+          </TouchableOpacity>
+          
+
+
           <View style={[styles.statCard, styles.primaryStat]}>
             <View style={styles.statIconContainer}>
               <Ionicons name="scan-outline" size={28} color="#6366f1" />
             </View>
             <View style={styles.statContent}>
+              
+              <Text style={styles.statLabel}>Total Screens</Text>
               <Text style={styles.statNumber}>{screensScanned}</Text>
-              <Text style={styles.statLabel}>Total Scans</Text>
               <Text style={styles.statTrend}>+12% this week</Text>
             </View>
           </View>
-          
-          <View style={[styles.statCard, styles.successStat]}>
-            <View style={styles.statIconContainer}>
-              <Ionicons name="checkmark-circle-outline" size={28} color="#10b981" />
-            </View>
-            <View style={styles.statContent}>
-              <Text style={styles.statNumber}>{reparable}</Text>
-              <Text style={styles.statLabel}>Reparable</Text>
-              <Text style={styles.statTrend}>+8% this week</Text>
-            </View>
-          </View>
-          
-          <View style={[styles.statCard, styles.dangerStat]}>
-            <View style={styles.statIconContainer}>
-              <Ionicons name="close-circle-outline" size={28} color="#ef4444" />
-            </View>
-            <View style={styles.statContent}>
-              <Text style={styles.statNumber}>{beyondRepair}</Text>
-              <Text style={styles.statLabel}>Beyond Repair</Text>
-              <Text style={styles.statTrend}>-3% this week</Text>
-            </View>
-          </View>
-          
+
+
           <View style={[styles.statCard, styles.infoStat]}>
             <View style={styles.statIconContainer}>
               <Ionicons name="time-outline" size={28} color="#06b6d4" />
             </View>
             <View style={styles.statContent}>
-              <Text style={styles.statNumber}>{formatElapsedTime(elapsedMilliseconds)}</Text>
               <Text style={styles.statLabel}>Session Time</Text>
+              <Text style={styles.statNumber}>{formatElapsedTime(elapsedMilliseconds)}</Text>
               <Text style={styles.statTrend}>Active</Text>
             </View>
           </View>
@@ -928,14 +1468,24 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
 {/* Professional Action Buttons */}
         {!sessionActive ? (
           <TouchableOpacity 
-            style={styles.primaryActionButton}
+            style={[
+              styles.primaryActionButton,
+              isStartingSession && styles.primaryActionButtonDisabled
+            ]}
             onPress={handleStartTask}
+            disabled={isStartingSession}
+            activeOpacity={0.85}
           >
             <View style={styles.buttonContent}>
-              <Ionicons name="play" size={24} color="#fff" />
-              <Text style={styles.buttonText}>Start New Session</Text>
+              {isStartingSession ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.sessionEmoji}>🚀</Text>
+              )}
+              <Text style={styles.buttonText}>
+                {isStartingSession ? 'Starting...' : 'Start New Session'}
+              </Text>
             </View>
-            <Ionicons name="arrow-forward" size={20} color="#fff" />
           </TouchableOpacity>
         ) : (
           <>
@@ -969,14 +1519,24 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
             </View>
             
             <TouchableOpacity 
-              style={styles.stopSessionButton}
+              style={[
+                styles.stopSessionButton,
+                isEndingSession && styles.stopSessionButtonDisabled
+              ]}
               onPress={handleStopTask}
+              disabled={isEndingSession}
+              activeOpacity={0.85}
             >
               <View style={styles.buttonContent}>
-                <Ionicons name="stop" size={24} color="#fff" />
-                <Text style={styles.buttonText}>End Session</Text>
+                {isEndingSession ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.sessionEmoji}>⏹️</Text>
+                )}
+                <Text style={styles.buttonText}>
+                  {isEndingSession ? 'Generating Summary...' : 'End Session'}
+                </Text>
               </View>
-              <Ionicons name="checkmark-circle" size={20} color="#fff" />
             </TouchableOpacity>
           </>
         )}
@@ -1060,22 +1620,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
 
         
 
-        {/* Report Generation Button */}
-        <View style={styles.reportSection}>
-          <TouchableOpacity 
-            style={styles.reportButton}
-            onPress={() => setReportModalVisible(true)}
-          >
-            <View style={styles.reportButtonIcon}>
-              <Ionicons name="document-text-outline" size={28} color="#fff" />
-            </View>
-            <View style={styles.reportButtonContent}>
-              <Text style={styles.reportButtonText}>Generate Report</Text>
-              <Text style={styles.reportButtonSubtext}>Create PDF report and share  </Text>
-            </View>
-             <Ionicons name="arrow-forward" size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
+        
 
 
 {/*THESE ARE ALL MODALS!!!!!!!!!!!!!!*/}
@@ -1149,7 +1694,10 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
         styles.reportToggleButton, 
         reportsView === 'daily' && styles.activeToggleButton
       ]}
-      onPress={() => fetchReportsData('daily')}
+      onPress={() => {
+      setReportsFilter('all');
+      fetchReportsData('daily');
+    }}
     >
       <Text style={[
         styles.reportToggleText,
@@ -1162,7 +1710,10 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
         styles.reportToggleButton, 
         reportsView === 'weekly' && styles.activeToggleButton
       ]}
-      onPress={() => fetchReportsData('weekly')}
+      onPress={() => {
+      setReportsFilter('all');
+      fetchReportsData('weekly');
+    }}
     >
       <Text style={[
         styles.reportToggleText,
@@ -1175,7 +1726,10 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
         styles.reportToggleButton, 
         reportsView === 'monthly' && styles.activeToggleButton
       ]}
-      onPress={() => fetchReportsData('monthly')}
+      onPress={() => {
+      setReportsFilter('all');
+      fetchReportsData('monthly');
+    }}
     >
       <Text style={[
         styles.reportToggleText,
@@ -1183,6 +1737,8 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
       ]}>Monthly</Text>
     </TouchableOpacity>
   </View>
+  
+  
   
   {loadingReports ? (
     <View style={styles.loadingContainer}>
@@ -1205,25 +1761,48 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
           <Text style={styles.reportStatNumber}>{reportsData.beyondRepair || 0}</Text>
           <Text style={styles.reportStatLabel}>Beyond Repair</Text>
         </View>
+        
+        <View style={styles.reportStatCard}>
+          <Text style={styles.reportStatNumber}>{reportsData.healthy || 0}</Text>
+          <Text style={styles.reportStatLabel}>Healthy</Text>
+        </View>
       </View>
       
       {/* Show filtered scans */}
       <Text style={styles.scanListTitle}>
-        {reportsView.charAt(0).toUpperCase() + reportsView.slice(1)} Scans
+        {reportsView.charAt(0).toUpperCase() + reportsView.slice(1)} {reportsFilter === 'all' ? 'Scans' : reportsFilter.charAt(0).toUpperCase() + reportsFilter.slice(1) + ' Screens'}
       </Text>
       
       {reportsData.scans.length > 0 ? (
         <View style={styles.scanListContainer}>
-          {reportsData.scans.map((scan, index) => (
+          {reportsData.scans
+            .filter(scan => {
+              switch (reportsFilter) {
+                case 'reparable':
+                  return scan.status === 'Reparable';
+                case 'beyondRepair':
+                  return scan.status === 'Beyond Repair';
+                case 'healthy':
+                  return scan.status === 'Healthy';
+                default:
+                  return true; // Show all for 'all' filter
+              }
+            })
+            .map((scan, index) => (
             <View key={index} style={styles.scanListItem}>
               <View style={[
                 styles.scanStatusIndicator,
-                { backgroundColor: scan.status === 'Reparable' ? '#dcfce7' : '#fee2e2' }
+                { 
+                  backgroundColor: scan.status === 'Reparable' ? '#dcfce7' : 
+                                 scan.status === 'Healthy' ? '#dbeafe' : '#fee2e2' 
+                }
               ]}>
                 <Ionicons 
-                  name={scan.status === 'Reparable' ? 'checkmark-circle' : 'close-circle'} 
+                  name={scan.status === 'Reparable' ? 'checkmark-circle' : 
+                        scan.status === 'Healthy' ? 'shield-checkmark' : 'close-circle'} 
                   size={20} 
-                  color={scan.status === 'Reparable' ? '#16a34a' : '#dc2626'} 
+                  color={scan.status === 'Reparable' ? '#16a34a' : 
+                         scan.status === 'Healthy' ? '#2563eb' : '#dc2626'} 
                 />
               </View>
               
@@ -1236,11 +1815,17 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
               
               <View style={[
                 styles.scanStatusBadge,
-                { backgroundColor: scan.status === 'Reparable' ? '#dcfce7' : '#fee2e2' }
+                { 
+                  backgroundColor: scan.status === 'Reparable' ? '#dcfce7' : 
+                                 scan.status === 'Healthy' ? '#dbeafe' : '#fee2e2' 
+                }
               ]}>
                 <Text style={[
                   styles.scanStatusText,
-                  { color: scan.status === 'Reparable' ? '#16a34a' : '#dc2626' }
+                  { 
+                    color: scan.status === 'Reparable' ? '#16a34a' : 
+                           scan.status === 'Healthy' ? '#2563eb' : '#dc2626' 
+                  }
                 ]}>
                   {scan.status}
                 </Text>
@@ -1251,9 +1836,149 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
       ) : (
         <View style={styles.emptyScans}>
           <Ionicons name="document-text-outline" size={32} color="#cbd5e1" />
-          <Text style={styles.emptyScansText}>No scans found for this period</Text>
+          <Text style={styles.emptyScansText}>
+            {reportsFilter === 'all' 
+              ? `No scans found for this ${reportsView} period` 
+              : `No ${reportsFilter} screens found for this ${reportsView} period`
+            }
+          </Text>
         </View>
       )}
+
+      {/* Daily report action (only show on Daily tab) */}
+      {reportsView === 'daily' && (
+        <View style={styles.dailyReportAction}>
+          <TouchableOpacity
+            style={[
+              styles.dailyReportButton,
+              isGeneratingDailyReport && styles.dailyReportButtonDisabled
+            ]}
+            onPress={handleGenerateDailyReport}
+            activeOpacity={0.85}
+            disabled={isGeneratingDailyReport}
+          >
+            <View style={[
+              styles.dailyReportIconWrap,
+              isGeneratingDailyReport && styles.dailyReportIconWrapDisabled
+            ]}>
+              {isGeneratingDailyReport ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="download-outline" size={20} color="#fff" />
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[
+                styles.dailyReportTitle,
+                isGeneratingDailyReport && styles.dailyReportTitleDisabled
+              ]}>
+                {isGeneratingDailyReport ? 'Generating...' : 'Generate Daily Report'}
+              </Text>
+              <Text style={[
+                styles.dailyReportSubtitle,
+                isGeneratingDailyReport && styles.dailyReportSubtitleDisabled
+              ]}>
+                {isGeneratingDailyReport ? 'Please wait...' : 'Create PDF for today and share'}
+              </Text>
+            </View>
+            {!isGeneratingDailyReport && (
+              <Ionicons name="arrow-forward" size={18} color="#fff" />
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
+
+      {reportsView === 'weekly' && (
+  <View style={styles.dailyReportAction}>
+    <TouchableOpacity
+      style={[
+        styles.dailyReportButton,
+        isGeneratingWeeklyReport && styles.dailyReportButtonDisabled
+      ]}
+      onPress={handleGenerateWeeklyReport}
+      activeOpacity={0.85}
+      disabled={isGeneratingWeeklyReport}
+    >
+      <View style={[
+        styles.dailyReportIconWrap,
+        isGeneratingWeeklyReport && styles.dailyReportIconWrapDisabled
+      ]}>
+        {isGeneratingWeeklyReport ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <Ionicons name="download-outline" size={20} color="#fff" />
+        )}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[
+          styles.dailyReportTitle,
+          isGeneratingWeeklyReport && styles.dailyReportTitleDisabled
+        ]}>
+          {isGeneratingWeeklyReport ? 'Generating...' : 'Generate Weekly Report'}
+        </Text>
+        <Text style={[
+          styles.dailyReportSubtitle,
+          isGeneratingWeeklyReport && styles.dailyReportSubtitleDisabled
+        ]}>
+          {isGeneratingWeeklyReport ? 'Please wait...' : 'Create PDF for this week and share'}
+        </Text>
+      </View>
+      {!isGeneratingWeeklyReport && (
+        <Ionicons name="arrow-forward" size={18} color="#fff" />
+      )}
+    </TouchableOpacity>
+  </View>
+)}
+ 
+    {reportsView === 'monthly' && (
+  <View style={styles.dailyReportAction}>
+    <TouchableOpacity
+      style={[
+        styles.dailyReportButton,
+        isGeneratingMonthlyReport && styles.dailyReportButtonDisabled
+      ]}
+      onPress={handleGenerateMonthlyReport}
+      activeOpacity={0.85}
+      disabled={isGeneratingMonthlyReport}
+    >
+      <View style={[
+        styles.dailyReportIconWrap,
+        isGeneratingMonthlyReport && styles.dailyReportIconWrapDisabled
+      ]}>
+        {isGeneratingMonthlyReport ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <Ionicons name="download-outline" size={20} color="#fff" />
+        )}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[
+          styles.dailyReportTitle,
+          isGeneratingMonthlyReport && styles.dailyReportTitleDisabled
+        ]}>
+          {isGeneratingMonthlyReport ? 'Generating...' : 'Generate Monthly Report'}
+        </Text>
+        <Text style={[
+          styles.dailyReportSubtitle,
+          isGeneratingMonthlyReport && styles.dailyReportSubtitleDisabled
+        ]}>
+          {isGeneratingMonthlyReport ? 'Please wait...' : 'Create PDF for this month and share'}
+        </Text>
+      </View>
+      {!isGeneratingMonthlyReport && (
+        <Ionicons name="arrow-forward" size={18} color="#fff" />
+      )}
+    </TouchableOpacity>
+  </View>
+)}
+
+
+
+
+
+
+
     </View>
   ) : (
     <View style={styles.emptyReports}>
@@ -1307,12 +2032,17 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
                     <View key={`${session.id}-${index}`} style={styles.scanHistoryItem}>
                       <View style={[
                         styles.scanStatusIndicator,
-                        { backgroundColor: scan.status === 'Reparable' ? '#dcfce7' : '#fee2e2' }
+                        { 
+                          backgroundColor: scan.status === 'Reparable' ? '#dcfce7' : 
+                                         scan.status === 'Healthy' ? '#dbeafe' : '#fee2e2' 
+                        }
                       ]}>
                         <Ionicons 
-                          name={scan.status === 'Reparable' ? 'checkmark-circle' : 'close-circle'} 
+                          name={scan.status === 'Reparable' ? 'checkmark-circle' : 
+                                scan.status === 'Healthy' ? 'shield-checkmark' : 'close-circle'} 
                           size={20} 
-                          color={scan.status === 'Reparable' ? '#16a34a' : '#dc2626'} 
+                          color={scan.status === 'Reparable' ? '#16a34a' : 
+                                 scan.status === 'Healthy' ? '#2563eb' : '#dc2626'} 
                         />
                       </View>
                       
@@ -1323,11 +2053,17 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
                           </Text>
                           <View style={[
                             styles.scanStatusBadge,
-                            { backgroundColor: scan.status === 'Reparable' ? '#dcfce7' : '#fee2e2' }
+                            { 
+                              backgroundColor: scan.status === 'Reparable' ? '#dcfce7' : 
+                                             scan.status === 'Healthy' ? '#dbeafe' : '#fee2e2' 
+                            }
                           ]}>
                             <Text style={[
                               styles.scanStatusText,
-                              { color: scan.status === 'Reparable' ? '#16a34a' : '#dc2626' }
+                              { 
+                                color: scan.status === 'Reparable' ? '#16a34a' : 
+                                       scan.status === 'Healthy' ? '#2563eb' : '#dc2626' 
+                              }
                             ]}>
                               {scan.status}
                             </Text>
@@ -1516,6 +2252,26 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
           <Text style={styles.buttonText}>Beyond Repair</Text>
           <Text style={styles.buttonSubtext}>Needs replacement</Text>
         </TouchableOpacity>
+
+        {/* Healthy */}
+        <TouchableOpacity
+          style={[styles.actionButton, styles.healthy]}
+          onPress={() => handleStatusSelect('Healthy')}
+          disabled={!!savingStatus}
+          activeOpacity={0.85}
+        >
+          <View style={styles.iconWrapper}>
+            {savingStatus === 'Healthy' ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : savedStatus === 'Healthy' ? (
+              <Ionicons name="checkmark-circle" size={26} color="#fff" />
+            ) : (
+              <Ionicons name="shield-checkmark-outline" size={26} color="#fff" />
+            )}
+          </View>
+          <Text style={styles.buttonText}>Healthy</Text>
+          <Text style={styles.buttonSubtext}>No issues found</Text>
+        </TouchableOpacity>
       </View>
     </View>
   </View>
@@ -1577,15 +2333,304 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair') => {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
-  );
-}
+
+      {/* End Session Summary Modal */}
+      <Modal
+        visible={endSessionModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEndSessionModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.sessionEndModal}>
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+              <Ionicons name="checkmark-done-circle" size={40} color="#10b981" />
+              <Text style={styles.modalTitle}>Session Ended</Text>
+              <Text style={styles.modalSubtitle}>Here is your session summary</Text>
+            </View>
+            <View style={styles.sessionSummaryRow}>
+              <Text style={styles.sessionSummaryLabel}>Total screens</Text>
+              <Text style={styles.sessionSummaryValue}>{screensScanned}</Text>
+            </View>
+            <View style={styles.sessionSummaryRow}>
+              <Text style={styles.sessionSummaryLabel}>Reparable</Text>
+              <Text style={styles.sessionSummaryValue}>{reparable}</Text>
+            </View>
+            <View style={styles.sessionSummaryRow}>
+              <Text style={styles.sessionSummaryLabel}>Beyond Repair</Text>
+              <Text style={styles.sessionSummaryValue}>{beyondRepair}</Text>
+            </View>
+            <View style={styles.sessionSummaryRow}>
+              <Text style={styles.sessionSummaryLabel}>Duration</Text>
+              <Text style={styles.sessionSummaryValue}>{formatElapsedTime(elapsedMilliseconds)}</Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.modalButton, styles.submitButton, { minHeight: 40, justifyContent: 'center' }]}
+              onPress={async () => {
+                setModalButtonLoading(true);
+                // Add a small delay to show loading state
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                setModalButtonLoading(false);
+                setEndSessionModalVisible(false);
+              }}
+              disabled={modalButtonLoading}
+            >
+              {modalButtonLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={[styles.submitButtonText, { fontSize: 12, fontWeight: 'bold' }]}>Done</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+              </Modal>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        {/* Defective Screens Modal */}
+        <Modal
+          visible={defectiveScreensModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setDefectiveScreensModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Defective Screens</Text>
+                <TouchableOpacity 
+                  onPress={() => setDefectiveScreensModalVisible(false)}
+                  style={styles.closeButton}
+                >
+                  <Ionicons name="close" size={24} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.defectiveOptions}>
+                <TouchableOpacity 
+                  style={styles.defectiveOption}
+                  onPress={() => {
+                    handleDefectiveTypeSelect('Reparable');
+                    setDefectiveScreensModalVisible(false);
+                  }}
+                >
+                  <View style={styles.optionIcon}>
+                    <Ionicons name="construct-outline" size={24} color="#10b981" />
+                  </View>
+                  <Text style={styles.optionTitle}>Reparable</Text>
+                  <Text style={styles.optionCount}>{reparable} screens</Text>
+                  <Ionicons name="chevron-forward" size={20} color="#64748b" />
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.defectiveOption}
+                  onPress={() => {
+                    handleDefectiveTypeSelect('Beyond Repair');
+                    setDefectiveScreensModalVisible(false);
+                  }}
+                >
+                  <View style={styles.optionIcon}>
+                    <Ionicons name="close-circle-outline" size={24} color="#ef4444" />
+                  </View>
+                  <Text style={styles.optionTitle}>Beyond Repair </Text>
+                  <Text style={styles.optionCount}>{beyondRepair} screens</Text>
+                  <Ionicons name="chevron-forward" size={20} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Non-Defective Screens Modal */}
+        <Modal
+          visible={nonDefectiveScreensModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setNonDefectiveScreensModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.healthyModalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Non-Defective Screens</Text>
+                <TouchableOpacity 
+                  onPress={() => setNonDefectiveScreensModalVisible(false)}
+                  style={styles.closeButton}
+                >
+                  <Ionicons name="close" size={24} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView 
+                style={styles.healthyScreensList}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.healthyScreensListContent}
+              >
+                <Text style={styles.healthyScreensTitle}>Healthy Screens ({healthy})</Text>
+                {scans.filter(scan => scan.status === 'Healthy').map((scan, index) => (
+                  <View key={index} style={styles.healthyScreenItem}>
+                    <View style={styles.screenInfo}>
+                      <Text style={styles.screenBarcode}>{scan.barcode}</Text>
+                      <Text style={styles.screenDate}>{new Date(scan.date).toLocaleDateString()}</Text>
+                    </View>
+                    <TouchableOpacity style={styles.productionButton}>
+                      <Ionicons name="rocket-outline" size={20} color="#10b981" />
+                      <Text style={styles.productionButtonText}>Send to Production</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {scans.filter(scan => scan.status === 'Healthy').length === 0 && (
+                  <Text style={styles.noHealthyScreens}>No healthy screens found</Text>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Repairable Screens Modal */}
+        <Modal
+          visible={selectedDefectiveType === 'Reparable'}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setSelectedDefectiveType(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.repairableModalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Repairable Screens</Text>
+                <TouchableOpacity 
+                  onPress={() => setSelectedDefectiveType(null)}
+                  style={styles.closeButton}
+                >
+                  <Ionicons name="close" size={24} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView 
+                style={styles.repairableScreensList}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.repairableScreensListContent}
+              >
+                <Text style={styles.repairableScreensTitle}>Repairable Screens ({reparable})</Text>
+                {scans.filter(scan => scan.status === 'Reparable').map((scan, index) => (
+                  <View key={index} style={styles.repairableScreenItem}>
+                    <View style={styles.screenInfo}>
+                      <Text style={styles.screenBarcode}>{scan.barcode}</Text>
+                      <Text style={styles.screenDate}>{new Date(scan.date).toLocaleDateString()}</Text>
+                    </View>
+                    <TouchableOpacity style={styles.repairButton}>
+                      <Ionicons name="construct-outline" size={20} color="#06b6d4" />
+                      <Text style={styles.repairButtonText}>Send for Repair</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {scans.filter(scan => scan.status === 'Reparable').length === 0 && (
+                  <Text style={styles.noRepairableScreens}>No repairable screens found</Text>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Beyond Repair Screens Modal */}
+        <Modal
+          visible={selectedDefectiveType === 'Beyond Repair'}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setSelectedDefectiveType(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.beyondRepairModalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Beyond Repair Screens</Text>
+                <TouchableOpacity 
+                  onPress={() => setSelectedDefectiveType(null)}
+                  style={styles.closeButton}
+                >
+                  <Ionicons name="close" size={24} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView 
+                style={styles.beyondRepairScreensList}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.beyondRepairScreensListContent}
+              >
+                <Text style={styles.beyondRepairScreensTitle}>Beyond Repair Screens ({beyondRepair})</Text>
+                {scans.filter(scan => scan.status === 'Beyond Repair').map((scan, index) => (
+                  <View key={index} style={styles.beyondRepairScreenItem}>
+                    <View style={styles.screenInfo}>
+                      <Text style={styles.screenBarcode}>{scan.barcode}</Text>
+                      <Text style={styles.screenDate}>{new Date(scan.date).toLocaleDateString()}</Text>
+                    </View>
+                    <TouchableOpacity style={styles.writeOffButton}>
+                      <Ionicons name="close-circle-outline" size={20} color="#06b6d4" />
+                      <Text style={styles.writeOffButtonText}>Write-Off</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {scans.filter(scan => scan.status === 'Beyond Repair').length === 0 && (
+                  <Text style={styles.noBeyondRepairScreens}>No beyond repair screens found</Text>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      </SafeAreaView>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    );
+  }
 // Updated Styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
-    paddingVertical:40,
+    paddingVertical:16,
   },
 
 
@@ -1656,11 +2701,18 @@ reparable: {
 beyondRepair: {
   backgroundColor: '#ef4444', // red
 },
-buttonText: {
-  fontSize: 16,
-  fontWeight: '600',
-  color: '#fff',
+healthy: {
+  backgroundColor: '#3b82f6', // blue
 },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  sessionEmoji: {
+    fontSize: 24,
+    marginRight: 8,
+  },
 buttonSubtext: {
   fontSize: 12,
   color: '#f0fdfa',
@@ -1705,6 +2757,32 @@ reportToggleText: {
   color: '#64748b',
 },
 activeToggleText: {
+  color: '#fff',
+},
+filterButtonsContainer: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  marginVertical: 12,
+  backgroundColor: '#f8fafc',
+  borderRadius: 8,
+  padding: 4,
+},
+filterButton: {
+  flex: 1,
+  paddingVertical: 8,
+  borderRadius: 6,
+  alignItems: 'center',
+  marginHorizontal: 2,
+},
+activeFilterButton: {
+  backgroundColor: '#6366f1',
+},
+filterButtonText: {
+  fontSize: 12,
+  fontWeight: '500',
+  color: '#64748b',
+},
+activeFilterButtonText: {
   color: '#fff',
 },
 reportsStatsContainer: {
@@ -1874,21 +2952,22 @@ modalMessage: {
   lineHeight: 22,
  
 },
+//text for summary scann!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 modalButton: {
   backgroundColor: '#6366f1',
-  paddingVertical: 12,
+  paddingVertical: 5,
   paddingHorizontal: 32,
-  borderRadius: 16,
+  borderRadius: 1,
   shadowColor: '#6366f1',
-  shadowOffset: { width: 0, height: 8 },
+  shadowOffset: { width: 0, height: 1 },
   shadowOpacity: 0.3,
   shadowRadius: 16,
   elevation: 8,
-  minWidth: 100,
+  minWidth: 50,
 },
 modalButtonText: {
   color: '#fff',
-  fontSize: 18,
+  fontSize: 12,
   fontWeight: '700',
   textAlign: 'center',
 },
@@ -1953,60 +3032,73 @@ reportModalMessage: {
   },
   subtitle: {
     fontSize: 14,
+    fontStyle: 'italic',
     color: '#616161',
   },
   logoutButton: {
-    padding: 8,
+    padding: 10,
+    marginBottom: 10,
+    
   },
   userCard: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
+    borderRadius: 20,
+    padding: 24,
+    marginBottom: 23,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
   },
   userHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   avatarContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#e0e0e0',
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#f0f9ff',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 15,
+    marginRight: 12,
+    borderWidth: 3,
+    borderColor: '#06b6d4',
   },
   avatar: {
-    fontSize: 36,
+    fontSize: 42,
   },
   statusIndicator: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#4CAF50', // Green for active
+    bottom: 2,
+    right: 2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#10b981',
+    borderWidth: 3,
+    borderColor: '#fff',
   },
   userInfo: {
     flex: 1,
   },
   userName: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#212121',
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1e293b',
     marginBottom: 4,
+    letterSpacing: -0.5,
   },
   userRole: {
-    fontSize: 13,
-    color: '#616161',
+    fontSize: 12,
+    color: '#475569',
     marginBottom: 8,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   userMeta: {
     flexDirection: 'row',
@@ -2015,7 +3107,7 @@ reportModalMessage: {
   userMetaItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 15,
+    marginRight: 1,
     marginBottom: 4,
   },
   userMetaText: {
@@ -2024,18 +3116,74 @@ reportModalMessage: {
     marginLeft: 1,
     fontWeight: '700',
   },
+  userEmail: {
+    fontSize: 12,
+    color: '#64748b',
+    marginBottom: 4,
+    fontStyle: 'italic',
+    fontWeight: '500',
+  },
+  userDetails: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  userDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  userDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    borderRadius: 12,
+    minWidth: 130,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  userDetailText: {
+    fontSize: 14,
+    color: '#475569',
+    marginLeft: 10,
+    fontWeight: '600',
+  },
+  userCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  userCardBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#fbbf24',
+  },
+  userCardBadgeText: {
+    fontSize: 12,
+    color: '#92400e',
+    fontWeight: '600',
+    marginLeft: 4,
+  },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 5,
   },
   statCard: {
     width: '48%',
     borderRadius: 16,
     padding: 18,
-    marginBottom: 16,
-    alignItems: 'center',
+    marginBottom: 8,
+    
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.05,
@@ -2072,18 +3220,19 @@ reportModalMessage: {
     marginBottom: 12,
   },
   statContent: {
-    alignItems: 'center',
+    
   },
   statNumber: {
-    fontSize: 28,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#212121',
+    color: '#616161',
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#616161',
+    fontWeight: 'bold',
+    
+    color: '#212121',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -2091,6 +3240,7 @@ reportModalMessage: {
     fontSize: 12,
     color: '#4caf50', // Green for positive trend
     fontWeight: '600',
+    alignItems: 'center',
   },
   sessionCard: {
     borderRadius: 16,
@@ -2150,15 +3300,26 @@ reportModalMessage: {
   primaryActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     backgroundColor: '#6366f1',
     borderRadius: 12,
     paddingVertical: 16,
     marginBottom: 20,
+  },
+  primaryActionButtonDisabled: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#a5b4fc',
+    borderRadius: 12,
+    paddingVertical: 16,
+    marginBottom: 20,
+    opacity: 0.7,
   },//88888888888888888888888888888888888888888888888888888888888888888888888888888888888
   buttonContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     color:'#6366f1',
   },
  
@@ -2206,10 +3367,19 @@ reportModalMessage: {
   stopSessionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     backgroundColor: '#dc3545',
     borderRadius: 12,
     paddingVertical: 20,
+  },
+  stopSessionButtonDisabled: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fca5a5',
+    borderRadius: 12,
+    paddingVertical: 20,
+    opacity: 0.7,
   },
   historySection: {
     marginTop: 8,
@@ -2517,5 +3687,333 @@ reportModalMessage: {
   reportButtonSubtext: {
     fontSize: 12,
     color: '#b0bec5',
+  },
+  // Daily report button styles (reuse report look, but compact)
+  dailyReportAction: {
+    marginTop: 12,
+  },
+  dailyReportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#6366f1',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  dailyReportButtonDisabled: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#a5b4fc',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    opacity: 0.7,
+  },
+  dailyReportIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  dailyReportIconWrapDisabled: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  dailyReportTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  dailyReportSubtitle: {
+    fontSize: 12,
+    color: '#E0E7FF',
+  },
+  dailyReportTitleDisabled: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#c7d2fe',
+  },
+  dailyReportSubtitleDisabled: {
+    fontSize: 12,
+    color: '#c7d2fe',
+  },
+  sessionEndModal: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '90%',
+    maxWidth: 420,
+  },
+  sessionSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  sessionSummaryLabel: {
+    fontSize: 14,
+    color: '#64748b',
+  },
+  sessionSummaryValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  
+  // New styles for clickable stats modals
+  closeButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#f1f5f9',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  defectiveOptions: {
+    marginTop: 20,
+  },
+  defectiveOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  optionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f0fdf4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  optionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
+    flex: 1,
+  },
+  optionCount: {
+    fontSize: 14,
+    color: '#64748b',
+    marginRight: 8,
+  },
+  healthyScreensList: {
+    marginTop: 20,
+  },
+  healthyScreensTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 16,
+  },
+  healthyScreenItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#f0fdf4',
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  screenInfo: {
+    flex: 1,
+  },
+  screenBarcode: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  screenDate: {
+    fontSize: 14,
+    color: '#64748b',
+  },
+  productionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10b981',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  productionButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  noHealthyScreens: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#64748b',
+    fontStyle: 'italic',
+    marginTop: 20,
+  },
+  
+  // Additional styles for repairable and beyond repair screens
+  repairableScreensList: {
+    marginTop: 20,
+  },
+  repairableScreensTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 16,
+  },
+  repairableScreenItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#fef3c7',
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#fbbf24',
+  },
+  repairButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f59e0b',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  repairButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  noRepairableScreens: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#64748b',
+    fontStyle: 'italic',
+    marginTop: 20,
+  },
+  beyondRepairScreensList: {
+    marginTop: 20,
+  },
+  beyondRepairScreensTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 16,
+  },
+  beyondRepairScreenItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#fee2e2',
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+  },
+  beyondRepairBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ef4444',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  beyondRepairBadgeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  writeOffButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ef4444',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  writeOffButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  noBeyondRepairScreens: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#64748b',
+    fontStyle: 'italic',
+    marginTop: 20,
+  },
+  
+  // New modal content styles for better scrolling and sizing
+  repairableModalContent: {
+    backgroundColor: '#fff',
+    marginHorizontal: 20,
+    borderRadius: 20,
+    padding: 24,
+    maxHeight: '80%',
+    width: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  beyondRepairModalContent: {
+    backgroundColor: '#fff',
+    marginHorizontal: 20,
+    borderRadius: 20,
+    padding: 24,
+    maxHeight: '80%',
+    width: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  repairableScreensListContent: {
+    paddingBottom: 20,
+  },
+  beyondRepairScreensListContent: {
+    paddingBottom: 20,
+  },
+  healthyModalContent: {
+    backgroundColor: '#fff',
+    marginHorizontal: 20,
+    borderRadius: 20,
+    padding: 24,
+    maxHeight: '80%',
+    width: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  healthyScreensListContent: {
+    paddingBottom: 20,
   },
 });

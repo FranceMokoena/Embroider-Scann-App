@@ -1,5 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet, Modal, TouchableOpacity, Image } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import {
+  View,
+  Text,
+  ActivityIndicator,
+  StyleSheet,
+  Modal,
+  TouchableOpacity,
+  Animated,
+  Easing,
+  Dimensions,
+} from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
 import { NavigationContainer } from '@react-navigation/native';
@@ -16,10 +26,35 @@ export default function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // Animated scale value for zoom-in
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  // Screen dimensions
+  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
+  // GIF original size (adjust if different)
+  const GIF_WIDTH = 200;
+  const GIF_HEIGHT = 200;
+
+  // Calculate scale to fully cover screen
+  const scaleX = screenWidth / GIF_WIDTH;
+  const scaleY = screenHeight / GIF_HEIGHT;
+  const finalScale = Math.max(scaleX, scaleY);
+
   useEffect(() => {
+    // Start zoom-in animation over 15 seconds
+    Animated.timing(scaleAnim, {
+      toValue: finalScale,
+      duration: 7000,
+      easing: Easing.inOut(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+
+    // Hide splash after 15 seconds
     const timer = setTimeout(() => {
       setShowSplash(false);
-    }, 15000); // GIF splash duration
+    }, 7000);
+
     return () => clearTimeout(timer);
   }, []);
 
@@ -41,7 +76,7 @@ export default function App() {
       Toast.show({
         type: 'error',
         text1: 'Update Check Failed',
-        text2: 'Unable to check for updates at the moment.'
+        text2: 'Unable to check for updates at the moment.',
       });
     } finally {
       setIsLoading(false);
@@ -58,7 +93,7 @@ export default function App() {
       Toast.show({
         type: 'error',
         text1: 'Update Failed',
-        text2: 'Please try again later.'
+        text2: 'Please try again later.',
       });
       setIsUpdating(false);
     }
@@ -67,11 +102,14 @@ export default function App() {
   if (showSplash) {
     return (
       <View style={styles.splashContainer}>
-        <Image
+        <Animated.Image
           source={require('./assets/Good.gif')}
-          style={styles.splashGif}
+          style={[styles.splashGif, { transform: [{ scale: scaleAnim }] }]}
           resizeMode="contain"
         />
+        <Text style={styles.splashText}>
+          The Professional Screen Management
+        </Text>
       </View>
     );
   }
@@ -101,14 +139,22 @@ export default function App() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Ionicons name="cloud-download-outline" size={48} color="#6366f1" style={{ marginBottom: 10 }} />
+            <Ionicons
+              name="cloud-download-outline"
+              size={48}
+              color="#6366f1"
+              style={{ marginBottom: 10 }}
+            />
             <Text style={styles.modalTitle}>Update Available</Text>
             <Text style={styles.modalSubtitle}>
               A new version of the app is ready. Update now for the best experience.
             </Text>
 
             <TouchableOpacity
-              style={[styles.updateButton, isUpdating && { backgroundColor: '#94a3b8' }]}
+              style={[
+                styles.updateButton,
+                isUpdating && { backgroundColor: '#94a3b8' },
+              ]}
               onPress={handleUpdate}
               disabled={isUpdating}
               activeOpacity={0.8}
@@ -131,24 +177,32 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    paddingHorizontal: 20,
   },
   splashGif: {
     width: 200,
-    height: 200
+    height: 200,
+  },
+  splashText: {
+    marginTop: 20,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
   },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20
+    padding: 20,
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20
+    paddingHorizontal: 20,
   },
   modalContent: {
     backgroundColor: '#fff',
@@ -156,29 +210,29 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: 'center',
     width: '90%',
-    elevation: 5
+    elevation: 5,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: '#111827',
-    marginBottom: 6
+    marginBottom: 6,
   },
   modalSubtitle: {
     fontSize: 14,
     color: '#6b7280',
     textAlign: 'center',
-    marginBottom: 20
+    marginBottom: 20,
   },
   updateButton: {
     backgroundColor: '#6366f1',
     paddingVertical: 10,
     paddingHorizontal: 24,
-    borderRadius: 8
+    borderRadius: 8,
   },
   updateButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600'
-  }
+    fontWeight: '600',
+  },
 });

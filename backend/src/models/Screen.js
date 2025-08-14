@@ -36,7 +36,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const screenSchema = new mongoose_1.Schema({
     barcode: { type: String, required: true },
-    status: { type: String, enum: ['Reparable', 'Beyond Repair'], required: true },
+    status: { 
+        type: String, 
+        enum: ['Reparable', 'Beyond Repair', 'Healthy'], 
+        required: true
+    },
     timestamp: { type: Date, default: () => new Date() },
     session: { type: mongoose_1.Schema.Types.ObjectId, ref: 'TaskSession', required: true },
 }, { timestamps: true });

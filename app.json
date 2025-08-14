@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/ScannImage.png",
     "splash": {
-      "image": "./assets/ScannImage.png",
+      "image": "./assets/Good.gif",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },

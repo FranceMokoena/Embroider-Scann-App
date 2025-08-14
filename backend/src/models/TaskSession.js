@@ -39,5 +39,17 @@ const taskSessionSchema = new mongoose_1.Schema({
     startTime: { type: Date, default: () => new Date() },
     endTime: { type: Date },
 }, { timestamps: true });
+
+// Add virtual field for scans
+taskSessionSchema.virtual('scans', {
+    ref: 'Screen',
+    localField: '_id',
+    foreignField: 'session'
+});
+
+// Ensure virtuals are included when converting to JSON
+taskSessionSchema.set('toJSON', { virtuals: true });
+taskSessionSchema.set('toObject', { virtuals: true });
+
 exports.default = mongoose_1.default.model('TaskSession', taskSessionSchema);
 //# sourceMappingURL=TaskSession.js.map

@@ -152,19 +152,6 @@ console.log("🚀 LoginScreen UPDATED VERSION is running!");
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
   const handleForgotPassword = () => {
     setForgotPassVisible(true);
     console.log("🚀 LoginScreen UPDATED VERSION is running!");
@@ -209,10 +196,7 @@ console.log("🚀 LoginScreen UPDATED VERSION is running!");
               ]}
             >
               <View style={styles.logoContainer}>
-                <View style={styles.logoIconContainer}>
-                  <Ionicons name="scan-circle" size={48} color="#6366f1" />
-                </View>
-                <Text style={styles.logoText}>TechScan</Text>
+                <Text style={styles.logoText}>Embroidery-Tech</Text>
                 <Text style={styles.logoSubtitle}>Professional Screen Management</Text>
               </View>
             </Animated.View>
@@ -220,8 +204,8 @@ console.log("🚀 LoginScreen UPDATED VERSION is running!");
             {/* Form */}
             <View style={styles.formContainer}>
                              <View style={styles.formHeader}>
-                 <Ionicons name="log-in-outline" size={32} color="#6366f1" />
-                 <Text style={styles.formTitle}>Welcome Back</Text>
+                 <Text style={styles.lockEmoji}>🔒</Text>
+                 
                  
                </View>
 
@@ -349,30 +333,6 @@ console.log("🚀 LoginScreen UPDATED VERSION is running!");
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
               {/* Register link */}
               <View style={styles.registerRow}>
                 <Text style={styles.registerPrompt}>Don't have an account? </Text>
@@ -385,19 +345,7 @@ console.log("🚀 LoginScreen UPDATED VERSION is running!");
                 </Text>
               </View>
 
-              {/* Footer */}
-              <View style={styles.footer}>
-                <Text style={styles.footerText}>
-                  By signing in, you agree to our{' '}
-                  <Text style={styles.footerLink} onPress={handleTermsPress}>
-                    Terms of Service
-                  </Text>
-                  {' '}and{' '}
-                  <Text style={styles.footerLink} onPress={handleTermsPress}>
-                    Privacy Policy
-                  </Text>
-                </Text>
-              </View>
+              
             </View>
           </Animated.View>
         </ScrollView>
@@ -518,10 +466,14 @@ modalButtonText: {
     shadowRadius: 30,
     elevation: 10,
   },
-  formHeader: {
-    alignItems: 'center',
-    marginBottom: 4,
-  },
+     formHeader: {
+     alignItems: 'center',
+     marginBottom: 4,
+   },
+   lockEmoji: {
+     fontSize: 50,
+     marginBottom: 3,
+   },
   formTitle: {
     fontSize: 24,
     fontWeight: '700',

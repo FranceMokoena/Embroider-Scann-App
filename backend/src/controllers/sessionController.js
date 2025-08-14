@@ -30,6 +30,8 @@ const stopSession = async (req, res) => {
         const scans = await Screen_1.default.find({ session: sessionId });
         const total = scans.length;
         const reparable = scans.filter(s => s.status === 'Reparable').length;
+        const beyondRepair = scans.filter(s => s.status === 'Beyond Repair').length;
+        const healthy = scans.filter(s => s.status === 'Healthy').length;
         const durationMs = session.endTime.getTime() - session.startTime.getTime();
         return res.json({
             sessionId,
@@ -38,7 +40,8 @@ const stopSession = async (req, res) => {
             durationMs,
             totalScans: total,
             reparable,
-            beyond: total - reparable
+            beyondRepair,
+            healthy
         });
     }
     catch (err) {
