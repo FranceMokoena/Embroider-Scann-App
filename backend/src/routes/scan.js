@@ -7,5 +7,7 @@ const auth_1 = require("../middleware/auth");
 const router = (0, express_1.Router)();
 router.post('/', auth_1.requireAuth, scanController_1.addScan);
 router.get('/history', auth_1.requireAuth, scanController_1.getUserScans);
+// Admin notification endpoint for screen actions
+router.post('/notify', auth_1.requireAuth, scanController_1.notifyScreenAction);
 exports.default = router;
 //# sourceMappingURL=scan.js.map

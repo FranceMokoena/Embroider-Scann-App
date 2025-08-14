@@ -77,6 +77,7 @@ const [loadingReports, setLoadingReports] = useState(false);
 const [reportsFilter, setReportsFilter] = useState<'all' | 'reparable' | 'beyondRepair' | 'healthy'>('all');
   const [endSessionModalVisible, setEndSessionModalVisible] = useState(false);
   const [modalButtonLoading, setModalButtonLoading] = useState(false);
+  const [actionBusyId, setActionBusyId] = useState<string | null>(null);
 const [isStartingSession, setIsStartingSession] = useState(false);
 const [isEndingSession, setIsEndingSession] = useState(false);
   
@@ -187,6 +188,39 @@ const [isEndingSession, setIsEndingSession] = useState(false);
       console.error('❌ Error fetching scan history:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Helper to notify admin about a screen action
+  const notifyAdminOfScreenAction = async (params: {
+    barcode: string;
+    status: string;
+    actionType: 'REPAIR' | 'PRODUCTION' | 'WRITE_OFF';
+    scannedAt: string;
+  }) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/scan/notify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          barcode: params.barcode,
+          status: params.status,
+          actionType: params.actionType,
+          scannedAt: params.scannedAt,
+          sessionId: currentSessionId,
+        }),
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(errText || 'Failed to notify admin');
+      }
+      Toast.show({ type: 'success', text1: 'Sent', text2: 'Admin notified successfully' });
+    } catch (e: any) {
+      console.error('❌ notifyAdminOfScreenAction error:', e);
+      Toast.show({ type: 'error', text1: 'Failed', text2: 'Could not notify admin' });
     }
   };
 
@@ -618,6 +652,10 @@ const isSameMonth = (date1: Date, date2: Date) => {
             <div class="summary-item">
               <div class="summary-number">${scanHistory.totalBeyondRepair || 0}</div>
               <div class="summary-label">Beyond Repair</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-number">${scanHistory.totalHealthy || 0}</div>
+              <div class="summary-label">Non Defective</div>
             </div>
             <div class="summary-item">
               <div class="summary-number">${currentDate}</div>
@@ -2361,6 +2399,10 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
               <Text style={styles.sessionSummaryValue}>{beyondRepair}</Text>
             </View>
             <View style={styles.sessionSummaryRow}>
+              <Text style={styles.sessionSummaryLabel}>Non Defective</Text>
+              <Text style={styles.sessionSummaryValue}>{healthy}</Text>
+            </View>
+            <View style={styles.sessionSummaryRow}>
               <Text style={styles.sessionSummaryLabel}>Duration</Text>
               <Text style={styles.sessionSummaryValue}>{formatElapsedTime(elapsedMilliseconds)}</Text>
             </View>
@@ -2498,7 +2540,20 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                       <Text style={styles.screenBarcode}>{scan.barcode}</Text>
                       <Text style={styles.screenDate}>{new Date(scan.date).toLocaleDateString()}</Text>
                     </View>
-                    <TouchableOpacity style={styles.productionButton}>
+                    <TouchableOpacity
+                      style={styles.productionButton}
+                      disabled={actionBusyId === `${scan.barcode}-PRODUCTION`}
+                      onPress={async () => {
+                        setActionBusyId(`${scan.barcode}-PRODUCTION`);
+                        await notifyAdminOfScreenAction({
+                          barcode: scan.barcode,
+                          status: scan.status,
+                          actionType: 'PRODUCTION',
+                          scannedAt: scan.date,
+                        });
+                        setActionBusyId(null);
+                      }}
+                    >
                       <Ionicons name="rocket-outline" size={20} color="#10b981" />
                       <Text style={styles.productionButtonText}>Send to Production</Text>
                     </TouchableOpacity>
@@ -2543,7 +2598,20 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                       <Text style={styles.screenBarcode}>{scan.barcode}</Text>
                       <Text style={styles.screenDate}>{new Date(scan.date).toLocaleDateString()}</Text>
                     </View>
-                    <TouchableOpacity style={styles.repairButton}>
+                    <TouchableOpacity
+                      style={styles.repairButton}
+                      disabled={actionBusyId === `${scan.barcode}-REPAIR`}
+                      onPress={async () => {
+                        setActionBusyId(`${scan.barcode}-REPAIR`);
+                        await notifyAdminOfScreenAction({
+                          barcode: scan.barcode,
+                          status: scan.status,
+                          actionType: 'REPAIR',
+                          scannedAt: scan.date,
+                        });
+                        setActionBusyId(null);
+                      }}
+                    >
                       <Ionicons name="construct-outline" size={20} color="#06b6d4" />
                       <Text style={styles.repairButtonText}>Send for Repair</Text>
                     </TouchableOpacity>
@@ -2588,7 +2656,20 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                       <Text style={styles.screenBarcode}>{scan.barcode}</Text>
                       <Text style={styles.screenDate}>{new Date(scan.date).toLocaleDateString()}</Text>
                     </View>
-                    <TouchableOpacity style={styles.writeOffButton}>
+                    <TouchableOpacity
+                      style={styles.writeOffButton}
+                      disabled={actionBusyId === `${scan.barcode}-WRITE_OFF`}
+                      onPress={async () => {
+                        setActionBusyId(`${scan.barcode}-WRITE_OFF`);
+                        await notifyAdminOfScreenAction({
+                          barcode: scan.barcode,
+                          status: scan.status,
+                          actionType: 'WRITE_OFF',
+                          scannedAt: scan.date,
+                        });
+                        setActionBusyId(null);
+                      }}
+                    >
                       <Ionicons name="close-circle-outline" size={20} color="#06b6d4" />
                       <Text style={styles.writeOffButtonText}>Write-Off</Text>
                     </TouchableOpacity>

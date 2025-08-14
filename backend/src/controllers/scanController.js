@@ -134,3 +134,39 @@ const getUserScans = async (req, res) => {
 
 exports.addScan = addScan;
 exports.getUserScans = getUserScans;
+
+// Notify admin about a screen action (send for repair / send to production / write off)
+const notifyScreenAction = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { barcode, status, actionType, scannedAt, sessionId } = req.body;
+
+    if (!barcode || !status || !actionType || !scannedAt) {
+      return res.status(400).json({
+        error: 'Missing required fields: barcode, status, actionType, scannedAt'
+      });
+    }
+
+    // Very lightweight implementation for now: just log the action.
+    // Later this can be persisted and/or broadcast to desktop admin app.
+    console.log('📣 Screen action notification:', {
+      userId,
+      barcode,
+      status,
+      actionType,
+      scannedAt,
+      sessionId: sessionId || null
+    });
+
+    return res.status(200).json({
+      message: 'Notification received',
+      received: { barcode, status, actionType, scannedAt, sessionId: sessionId || null }
+    });
+
+  } catch (error) {
+    console.error('❌ Error notifying screen action:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.notifyScreenAction = notifyScreenAction;
