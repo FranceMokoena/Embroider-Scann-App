@@ -170,3 +170,41 @@ const notifyScreenAction = async (req, res) => {
 };
 
 exports.notifyScreenAction = notifyScreenAction;
+
+// Delete multiple screens by barcodes
+const deleteScreens = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { barcodes } = req.body;
+
+    if (!barcodes || !Array.isArray(barcodes) || barcodes.length === 0) {
+      return res.status(400).json({
+        error: 'Missing or invalid barcodes array'
+      });
+    }
+
+    console.log('🗑️ Delete screens request:', { userId, barcodes });
+
+    // Find and delete screens that belong to the user's sessions
+    const deletedScreens = await Screen_1.default.deleteMany({
+      barcode: { $in: barcodes },
+      session: {
+        $in: await TaskSession_1.default.find({ technician: userId }).distinct('_id')
+      }
+    });
+
+    console.log(`✅ Deleted ${deletedScreens.deletedCount} screens for user ${userId}`);
+
+    return res.status(200).json({
+      message: 'Screens deleted successfully',
+      deletedCount: deletedScreens.deletedCount,
+      requestedCount: barcodes.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error deleting screens:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.deleteScreens = deleteScreens;

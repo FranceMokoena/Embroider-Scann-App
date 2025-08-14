@@ -9,5 +9,7 @@ router.post('/', auth_1.requireAuth, scanController_1.addScan);
 router.get('/history', auth_1.requireAuth, scanController_1.getUserScans);
 // Admin notification endpoint for screen actions
 router.post('/notify', auth_1.requireAuth, scanController_1.notifyScreenAction);
+// Delete screens endpoint
+router.delete('/delete', auth_1.requireAuth, scanController_1.deleteScreens);
 exports.default = router;
 //# sourceMappingURL=scan.js.map
