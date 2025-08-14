@@ -22,6 +22,7 @@ const app = express();
 
 const allowedOrigins = [
   'https://embroider-scann-app.onrender.com',
+  'https://embroider-tech-desktopmanagementapp.onrender.com',  // <-- added desktop app
   'http://localhost:19006',  // Expo dev server
   'http://localhost:3000',   // local frontend dev
   'exp://127.0.0.1:19000',  // Expo app URL scheme if needed

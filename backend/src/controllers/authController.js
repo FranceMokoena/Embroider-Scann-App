@@ -1,69 +1,73 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
+import bcrypt from 'bcryptjs';
+import User from '../models/User.js';
+
+export const listUsers = async (req, res) => {
+  try {
+    const { department, q, page = 1, limit = 50 } = req.query;
+    const match = {};
+    if (department) match.department = department;
+    if (q) {
+      const re = new RegExp(String(q), 'i');
+      match.$or = [{ username: re }, { email: re }, { name: re }, { surname: re }];
+    }
+    const skip = (Number(page) - 1) * Number(limit);
+    const users = await User.find(match).skip(skip).limit(Number(limit)).select('-password');
+    const total = await User.countDocuments(match);
+
+    return res.json({ data: users, page: Number(page), limit: Number(limit), total });
+  } catch (err) {
+    console.error('❌ listUsers error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
 };
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.login = exports.register = void 0;
-const bcryptjs_1 = __importDefault(require("bcryptjs"));
-const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const User_1 = __importDefault(require("../models/User"));
-const JWT_SECRET = process.env.JWT_SECRET;
-const register = async (req, res) => {
-    try {
-        const { department, username, password } = req.body;
-        if (!department || !username || !password) {
-            return res.status(400).json({ error: 'All fields are required' });
-        }
-        if (await User_1.default.findOne({ username })) {
-            return res.status(409).json({ error: 'Username already taken' });
-        }
-        const hashed = await bcryptjs_1.default.hash(password, 10);
-        const user = await User_1.default.create({ department, username, password: hashed });
-        return res.status(201).json({ message: 'Registration successful', userId: user._id });
+
+export const createUser = async (req, res) => {
+  try {
+    const { department, username, password, name, surname, email, role = 'technician' } = req.body;
+    if (!department || !username || !password) {
+      return res.status(400).json({ error: 'department, username and password required' });
     }
-    catch (err) {
-        console.error('❌ Register error:', err);
-        return res.status(500).json({ error: 'Server error', details: err.message });
+
+    if (await User.findOne({ username })) {
+      return res.status(409).json({ error: 'Username already taken' });
     }
+
+    const hashed = await bcrypt.hash(password, 10);
+    const user = await User.create({ department, username, password: hashed, name, surname, email, role });
+    return res.status(201).json({ message: 'User created', userId: user._id });
+  } catch (err) {
+    console.error('❌ createUser error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
 };
-exports.register = register;
-const login = async (req, res) => {
-    try {
-        const { username, password } = req.body;
-        if (!username || !password) {
-            return res.status(400).json({ error: 'Username and password required' });
-        }
-        const user = await User_1.default.findOne({ username });
-        if (!user || !(await bcryptjs_1.default.compare(password, user.password))) {
-            return res.status(401).json({ error: 'Invalid credentials' });
-        }
-        const token = jsonwebtoken_1.default.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
-        return res.json({ message: 'Login successful', token });
+
+export const updateUser = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const updates = { ...req.body };
+
+    if (updates.password) {
+      updates.password = await bcrypt.hash(updates.password, 10);
     }
-    catch (err) {
-        console.error('❌ Login error:', err);
-        return res.status(500).json({ error: 'Server error', details: err.message });
-    }
+
+    const user = await User.findByIdAndUpdate(id, updates, { new: true }).select('-password');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    return res.json({ message: 'User updated', user });
+  } catch (err) {
+    console.error('❌ updateUser error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
 };
-exports.login = login;
-const getProfile = async (req, res) => {
-    try {
-        const user = await User_1.default.findById(req.userId).select('-password');
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        return res.json({
-            id: user._id,
-            username: user.username,
-            department: user.department,
-            createdAt: user.createdAt,
-            updatedAt: user.updatedAt
-        });
-    }
-    catch (err) {
-        console.error('❌ Get profile error:', err);
-        return res.status(500).json({ error: 'Server error', details: err.message });
-    }
+
+export const deleteUser = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const user = await User.findByIdAndUpdate(id, { isActive: false }, { new: true }).select('-password');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    return res.json({ message: 'User deactivated', user });
+  } catch (err) {
+    console.error('❌ deleteUser error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
 };
-exports.getProfile = getProfile;
-//# sourceMappingURL=authController.js.map
