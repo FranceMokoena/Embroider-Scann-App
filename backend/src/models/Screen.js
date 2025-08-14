@@ -1,6 +1,7 @@
 // Screen.js
+// Screen.js
+import mongoose from 'mongoose';
 
-"use strict";
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -46,5 +47,5 @@ const screenSchema = new mongoose_1.Schema({
     timestamp: { type: Date, default: () => new Date() },
     session: { type: mongoose_1.Schema.Types.ObjectId, ref: 'TaskSession', required: true },
 }, { timestamps: true });
-exports.default = mongoose_1.default.model('Screen', screenSchema);
+export default mongoose.model('Screen', screenSchema);
 //# sourceMappingURL=Screen.js.map
