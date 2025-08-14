@@ -1,6 +1,6 @@
 "use strict";
-import Screen from "../models/Screen.js";
-import TaskSession from "../models/TaskSession.js";
+const Screen = require("../models/Screen");
+const TaskSession = require("../models/TaskSession");
 
 /**
  * Add a new scan (mobile app)
