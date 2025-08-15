@@ -1,12 +1,12 @@
-import express from 'express';
-import mongoose from 'mongoose';
-import cors from 'cors';
-import dotenv from 'dotenv';
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const dotenv = require('dotenv');
 
-// Import route modules (CommonJS-style compiled, so import full module)
-import authRoutesModule from './routes/auth.js';
-import sessionsRoutesModule from './routes/sessions.js';
-import scanRoutesModule from './routes/scan.js';
+// Import route modules
+const authRoutes = require('./routes/auth');
+const sessionsRoutes = require('./routes/sessions');
+const scanRoutes = require('./routes/scan');
 
 dotenv.config();
 
@@ -47,10 +47,7 @@ app.get('/', (_req, res) => {
   res.json({ status: '✅ API is running', timestamp: new Date().toISOString() });
 });
 
-// Extract router exports from .default because these are CommonJS compiled modules
-const authRoutes = authRoutesModule.default;
-const sessionsRoutes = sessionsRoutesModule.default;
-const scanRoutes = scanRoutesModule.default;
+
 
 // Register routes
 app.use('/api/auth', authRoutes);

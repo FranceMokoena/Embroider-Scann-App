@@ -135,6 +135,63 @@ const getUserScans = async (req, res) => {
 exports.addScan = addScan;
 exports.getUserScans = getUserScans;
 
+// Get all scans for all technicians (admin only)
+const getAllScans = async (req, res) => {
+  try {
+    const { department, startDate, endDate, technician } = req.query;
+
+    const sessionFilter = {};
+    if (department) sessionFilter.department = department;
+    if (technician) sessionFilter.technicianName = new RegExp(technician, 'i');
+    if (startDate || endDate) {
+      sessionFilter.startTime = {};
+      if (startDate) sessionFilter.startTime.$gte = new Date(startDate);
+      if (endDate) sessionFilter.startTime.$lte = new Date(endDate);
+    }
+
+    const sessions = await TaskSession_1.default.find(sessionFilter)
+      .sort({ startTime: -1 })
+      .populate({
+        path: 'scans',
+        model: 'Screen',
+        select: 'barcode status timestamp'
+      });
+
+    let totalScans = 0, totalReparable = 0, totalBeyondRepair = 0, totalHealthy = 0;
+
+    sessions.forEach(session => {
+      if (session.scans) {
+        totalScans += session.scans.length;
+        session.scans.forEach(scan => {
+          if (scan.status === 'Reparable') totalReparable++;
+          if (scan.status === 'Beyond Repair') totalBeyondRepair++;
+          if (scan.status === 'Healthy') totalHealthy++;
+        });
+      }
+    });
+
+    res.json({
+      sessions: sessions.map(s => ({
+        id: s._id,
+        technician: s.technician,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        scans: s.scans || []
+      })),
+      totalScans,
+      totalReparable,
+      totalBeyondRepair,
+      totalHealthy
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching all scans:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.getAllScans = getAllScans;
+
 // Notify admin about a screen action (send for repair / send to production / write off)
 const notifyScreenAction = async (req, res) => {
   try {

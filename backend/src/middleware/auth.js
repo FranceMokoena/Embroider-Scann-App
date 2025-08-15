@@ -1,33 +1,48 @@
 "use strict";
-// src/middleware/auth.ts
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.requireAuth = void 0;
-const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-// Assert JWT_SECRET is defined (we exit process if not)
+
+const jwt = require('jsonwebtoken');
+
 const JWT_SECRET = process.env.JWT_SECRET;
+const DESKTOP_SERVICE_TOKEN = process.env.DESKTOP_SERVICE_TOKEN;
+
 const requireAuth = (req, res, next) => {
-    const auth = req.headers.authorization;
-    if (!auth?.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+  const auth = req.headers.authorization;
+
+  if (!auth || !auth.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+  }
+
+  const token = auth.split(' ')[1];
+
+  // Allow desktop service token
+  if (token === DESKTOP_SERVICE_TOKEN) {
+    req.userId = 'desktop-service';
+    req.isAdmin = true; // desktop always admin
+    return next();
+  }
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (!payload || typeof payload.userId !== 'string') {
+      throw new Error('Invalid token payload');
     }
-    // We know split will yield [ 'Bearer', '<token>' ], so it's safe to assert non-null
-    const token = auth.split(' ')[1];
-    try {
-        const payload = jsonwebtoken_1.default.verify(token, JWT_SECRET);
-        const data = payload;
-        if (!data || typeof data.userId !== 'string') {
-            throw new Error('Invalid token payload');
-        }
-        req.userId = data.userId;
-        return next();
-    }
-    catch (err) {
-        console.error('❌ requireAuth error:', err);
-        return res.status(403).json({ error: 'Invalid or expired token' });
-    }
+    req.userId = payload.userId;
+    req.isAdmin = !!payload.isAdmin;
+    next();
+  } catch (err) {
+    console.error('❌ requireAuth error:', err);
+    return res.status(403).json({ error: 'Invalid or expired token' });
+  }
 };
-exports.requireAuth = requireAuth;
-//# sourceMappingURL=auth.js.map
+
+const requireAdmin = (req, res, next) => {
+  if (!req.isAdmin) {
+    return res.status(403).json({ error: 'Admin privileges required' });
+  }
+  next();
+};
+
+module.exports = {
+  requireAuth,
+  requireAdmin,
+};
