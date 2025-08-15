@@ -5,7 +5,7 @@ const TaskSession = require("../models/TaskSession");
 /**
  * Add a new scan (mobile app)
  */
-export const addScan = async (req, res) => {
+const addScan = async (req, res) => {
   try {
     const { barcode, status, sessionId } = req.body;
     const userId = req.userId;
@@ -60,7 +60,7 @@ export const addScan = async (req, res) => {
 /**
  * Get scans for logged-in user (mobile app)
  */
-export const getUserScans = async (req, res) => {
+const getUserScans = async (req, res) => {
   try {
     const userId = req.userId;
 
@@ -107,7 +107,7 @@ export const getUserScans = async (req, res) => {
 /**
  * Get all scans for all technicians (desktop/admin)
  */
-export const getAllScans = async (req, res) => {
+const getAllScans = async (req, res) => {
   try {
     const { department, startDate, endDate, technician } = req.query;
 
@@ -164,7 +164,7 @@ export const getAllScans = async (req, res) => {
 /**
  * Notify screen action
  */
-export const notifyScreenAction = async (req, res) => {
+const notifyScreenAction = async (req, res) => {
   try {
     const { barcode, status, actionType, scannedAt, sessionId } = req.body;
 
@@ -197,7 +197,7 @@ export const notifyScreenAction = async (req, res) => {
 /**
  * Delete multiple screens
  */
-export const deleteScreens = async (req, res) => {
+const deleteScreens = async (req, res) => {
   try {
     const { barcodes } = req.body;
 
@@ -224,4 +224,12 @@ export const deleteScreens = async (req, res) => {
     console.error('❌ Error deleting screens:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
+};
+
+module.exports = {
+  addScan,
+  getUserScans,
+  getAllScans,
+  notifyScreenAction,
+  deleteScreens
 };

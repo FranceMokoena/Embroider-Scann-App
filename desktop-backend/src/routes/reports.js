@@ -19,3 +19,4 @@ router.get('/pdf', generatePdfReport);
 
 export default router;
 
+
