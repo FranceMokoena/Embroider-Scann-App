@@ -1,7 +1,7 @@
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const Screen_1 = require("../models/Screen");
-const TaskSession_1 = require("../models/TaskSession");
+
+const Screen = require("../models/Screen");
+const TaskSession = require("../models/TaskSession");
 
 // Add a new scan
 const addScan = async (req, res) => {
@@ -28,7 +28,7 @@ const addScan = async (req, res) => {
     }
 
     // Verify session exists and belongs to user
-    const session = await TaskSession_1.default.findById(sessionId);
+    const session = await TaskSession.findById(sessionId);
     console.log('🔍 Session validation:', { sessionId, session: session ? 'found' : 'not found', userId });
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });
@@ -40,7 +40,7 @@ const addScan = async (req, res) => {
     }
 
     // Create new screen scan
-    const newScan = new Screen_1.default({
+    const newScan = new Screen({
       barcode,
       status,
       session: sessionId,
@@ -76,7 +76,7 @@ const getUserScans = async (req, res) => {
     const userId = req.userId;
 
     // Get all sessions for the user
-    const sessions = await TaskSession_1.default.find({ technician: userId })
+    const sessions = await TaskSession.find({ technician: userId })
       .sort({ startTime: -1 })
       .populate({
         path: 'scans',
@@ -149,7 +149,7 @@ const getAllScans = async (req, res) => {
       if (endDate) sessionFilter.startTime.$lte = new Date(endDate);
     }
 
-    const sessions = await TaskSession_1.default.find(sessionFilter)
+    const sessions = await TaskSession.find(sessionFilter)
       .sort({ startTime: -1 })
       .populate({
         path: 'scans',
@@ -243,10 +243,10 @@ const deleteScreens = async (req, res) => {
     console.log('🗑️ Delete screens request:', { userId, barcodes });
 
     // Find and delete screens that belong to the user's sessions
-    const deletedScreens = await Screen_1.default.deleteMany({
+    const deletedScreens = await Screen.deleteMany({
       barcode: { $in: barcodes },
       session: {
-        $in: await TaskSession_1.default.find({ technician: userId }).distinct('_id')
+        $in: await TaskSession.find({ technician: userId }).distinct('_id')
       }
     });
 
