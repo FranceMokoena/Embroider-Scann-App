@@ -62,9 +62,6 @@ const getProfile = async (req, res) => {
 module.exports = {
   register,
   login,
-  getProfile,
-  listUsers,
-  createUser,
-  updateUser,
-  deleteUser
+  getProfile
+
 };
