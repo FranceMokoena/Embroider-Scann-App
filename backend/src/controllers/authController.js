@@ -1,30 +1,12 @@
 // src/controllers/authController.js
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const jwt = require('jsonwebtoken');
 
-// List users
-const listUsers = async (req, res) => {
-  try {
-    const { department, q, page = 1, limit = 50 } = req.query;
-    const match = {};
-    if (department) match.department = department;
-    if (q) {
-      const re = new RegExp(String(q), 'i');
-      match.$or = [{ username: re }, { email: re }, { name: re }, { surname: re }];
-    }
-    const skip = (Number(page) - 1) * Number(limit);
-    const users = await User.find(match).skip(skip).limit(Number(limit)).select('-password');
-    const total = await User.countDocuments(match);
+const JWT_SECRET = process.env.JWT_SECRET;
 
-    return res.json({ data: users, page: Number(page), limit: Number(limit), total });
-  } catch (err) {
-    console.error('❌ listUsers error:', err);
-    return res.status(500).json({ error: 'Server error' });
-  }
-};
-
-// Create user
-const createUser = async (req, res) => {
+// Register user
+const register = async (req, res) => {
   try {
     const { department, username, password, name, surname, email, role = 'technician' } = req.body;
     if (!department || !username || !password) {
@@ -39,46 +21,48 @@ const createUser = async (req, res) => {
     const user = await User.create({ department, username, password: hashed, name, surname, email, role });
     return res.status(201).json({ message: 'User created', userId: user._id });
   } catch (err) {
-    console.error('❌ createUser error:', err);
+    console.error('❌ register error:', err);
     return res.status(500).json({ error: 'Server error' });
   }
 };
 
-// Update user
-const updateUser = async (req, res) => {
+// Login user
+const login = async (req, res) => {
   try {
-    const id = req.params.id;
-    const updates = { ...req.body };
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'username and password required' });
 
-    if (updates.password) {
-      updates.password = await bcrypt.hash(updates.password, 10);
-    }
+    const user = await User.findOne({ username });
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const user = await User.findByIdAndUpdate(id, updates, { new: true }).select('-password');
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(401).json({ error: 'Invalid credentials' });
 
-    return res.json({ message: 'User updated', user });
+    const token = jwt.sign({ userId: user._id, isAdmin: user.role === 'admin' }, JWT_SECRET, { expiresIn: '7d' });
+    return res.json({ token });
   } catch (err) {
-    console.error('❌ updateUser error:', err);
+    console.error('❌ login error:', err);
     return res.status(500).json({ error: 'Server error' });
   }
 };
 
-// Deactivate user
-const deleteUser = async (req, res) => {
+// Get profile
+const getProfile = async (req, res) => {
   try {
-    const id = req.params.id;
-    const user = await User.findByIdAndUpdate(id, { isActive: false }, { new: true }).select('-password');
+    const user = await User.findById(req.userId).select('-password');
     if (!user) return res.status(404).json({ error: 'User not found' });
-    return res.json({ message: 'User deactivated', user });
+    return res.json({ user });
   } catch (err) {
-    console.error('❌ deleteUser error:', err);
+    console.error('❌ getProfile error:', err);
     return res.status(500).json({ error: 'Server error' });
   }
 };
 
-// Export all functions
+// Export
 module.exports = {
+  register,
+  login,
+  getProfile,
   listUsers,
   createUser,
   updateUser,
