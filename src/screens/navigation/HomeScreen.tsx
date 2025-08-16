@@ -202,6 +202,7 @@ const [isEndingSession, setIsEndingSession] = useState(false);
     status: string;
     actionType: 'REPAIR' | 'PRODUCTION' | 'WRITE_OFF';
     scannedAt: string;
+    sessionId?: string | null;
   }): Promise<boolean> => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/scan/notify`, {
@@ -1385,68 +1386,6 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
     };
   }, [sessionActive]);
 
-  // Helper functions for delete functionality
-  const toggleScreenSelection = (barcode: string) => {
-    setSelectedScreensForDelete(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(barcode)) {
-        newSet.delete(barcode);
-      } else {
-        newSet.add(barcode);
-      }
-      return newSet;
-    });
-  };
-
-  const handleDeleteScreens = async () => {
-    if (selectedScreensForDelete.size === 0) {
-      Toast.show({ type: 'error', text1: 'No screens selected', text2: 'Please select screens to delete' });
-      return;
-    }
-    setConfirmDeleteModalVisible(true);
-  };
-
-  const confirmDeleteScreens = async () => {
-    try {
-      setIsDeletingScreens(true);
-      const selectedBarcodes = Array.from(selectedScreensForDelete);
-      
-      // Call backend to delete screens
-      const response = await fetch(`${API_BASE_URL}/api/scan/delete`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          barcodes: selectedBarcodes,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete screens');
-      }
-
-      Toast.show({ 
-        type: 'success', 
-        text1: 'Deleted Successfully', 
-        text2: `${selectedBarcodes.length} screen(s) deleted` 
-      });
-      
-      // Reset state and refresh data
-      setSelectedScreensForDelete(new Set());
-      setConfirmDeleteModalVisible(false);
-      setDeleteModalVisible(false);
-      fetchScanHistory(); // Refresh the data
-      
-    } catch (error) {
-      console.error('❌ Error deleting screens:', error);
-      Toast.show({ type: 'error', text1: 'Delete Failed', text2: 'Could not delete selected screens' });
-    } finally {
-      setIsDeletingScreens(false);
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8f9fa" />
@@ -1558,12 +1497,6 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
               <Text style={styles.statNumber}>{screensScanned}</Text>
               <Text style={styles.statTrend}>+12% this week</Text>
             </View>
-            <TouchableOpacity 
-              style={styles.deleteIconButton}
-              onPress={() => setDeleteModalVisible(true)}
-            >
-              <Ionicons name="trash-outline" size={20} color="#ef4444" />
-            </TouchableOpacity>
           </View>
 
 
@@ -2626,6 +2559,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                           status: scan.status,
                           actionType: 'PRODUCTION',
                           scannedAt: scan.date,
+                          sessionId: currentSessionId, // Add the current session ID
                         });
                         if (ok) {
                           setActionStatusById(prev => ({ ...prev, [key]: 'success' }));
@@ -2696,6 +2630,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                           status: scan.status,
                           actionType: 'REPAIR',
                           scannedAt: scan.date,
+                          sessionId: currentSessionId, // Add the current session ID
                         });
                         if (ok) {
                           setActionStatusById(prev => ({ ...prev, [key]: 'success' }));
@@ -2766,6 +2701,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                           status: scan.status,
                           actionType: 'WRITE_OFF',
                           scannedAt: scan.date,
+                          sessionId: currentSessionId, // Add the current session ID
                         });
                         if (ok) {
                           setActionStatusById(prev => ({ ...prev, [key]: 'success' }));
@@ -2790,134 +2726,6 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                   <Text style={styles.noBeyondRepairScreens}>No beyond repair screens found</Text>
                 )}
               </ScrollView>
-            </View>
-          </View>
-        </Modal>
-
-        {/* Delete Screens Modal */}
-        <Modal
-          visible={deleteModalVisible}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setDeleteModalVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.deleteModalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Delete Screens</Text>
-                <TouchableOpacity 
-                  onPress={() => setDeleteModalVisible(false)}
-                  style={styles.closeButton}
-                >
-                  <Ionicons name="close" size={24} color="#64748b" />
-                </TouchableOpacity>
-              </View>
-              
-              <ScrollView 
-                style={styles.deleteScreensList}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.deleteScreensListContent}
-              >
-                <Text style={styles.deleteScreensTitle}>Select Screens to Delete ({scans.length})</Text>
-                {scans.map((scan, index) => (
-                  <TouchableOpacity 
-                    key={index} 
-                    style={styles.deleteScreenItem}
-                    onPress={() => toggleScreenSelection(scan.barcode)}
-                  >
-                    <View style={styles.deleteScreenCheckbox}>
-                      {selectedScreensForDelete.has(scan.barcode) ? (
-                        <Ionicons name="checkbox" size={24} color="#6366f1" />
-                      ) : (
-                        <Ionicons name="square-outline" size={24} color="#64748b" />
-                      )}
-                    </View>
-                    <View style={styles.deleteScreenInfo}>
-                      <Text style={styles.deleteScreenBarcode}>{scan.barcode}</Text>
-                      <Text style={styles.deleteScreenDate}>{new Date(scan.date).toLocaleDateString()}</Text>
-                    </View>
-                    <View style={[
-                      styles.deleteScreenStatusBadge,
-                      scan.status === 'Healthy' && styles.statusHealthy,
-                      scan.status === 'Reparable' && styles.statusReparable,
-                      scan.status === 'Beyond Repair' && styles.statusBeyondRepair
-                    ]}>
-                      <Text style={styles.deleteScreenStatusText}>{scan.status}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-                {scans.length === 0 && (
-                  <Text style={styles.noScreensToDelete}>No screens found</Text>
-                )}
-              </ScrollView>
-              
-              <View style={styles.deleteModalActions}>
-                <TouchableOpacity 
-                  style={styles.cancelDeleteButton}
-                  onPress={() => setDeleteModalVisible(false)}
-                >
-                  <Text style={styles.cancelDeleteButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[
-                    styles.deleteSelectedButton,
-                    selectedScreensForDelete.size === 0 && styles.deleteSelectedButtonDisabled
-                  ]}
-                  onPress={handleDeleteScreens}
-                  disabled={selectedScreensForDelete.size === 0}
-                >
-                  <Ionicons name="trash-outline" size={20} color="#ffffff" />
-                  <Text style={styles.deleteSelectedButtonText}>
-                    Delete Selected ({selectedScreensForDelete.size})
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-
-        {/* Confirm Delete Modal */}
-        <Modal
-          visible={confirmDeleteModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setConfirmDeleteModalVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.confirmDeleteModalContent}>
-              <View style={styles.confirmDeleteIcon}>
-                <Ionicons name="warning" size={48} color="#ef4444" />
-              </View>
-              <Text style={styles.confirmDeleteTitle}>Confirm Deletion</Text>
-              <Text style={styles.confirmDeleteMessage}>
-                Are you sure you want to delete {selectedScreensForDelete.size} selected screen(s)? This action cannot be undone.
-              </Text>
-              <View style={styles.confirmDeleteActions}>
-                <TouchableOpacity 
-                  style={styles.cancelConfirmButton}
-                  onPress={() => setConfirmDeleteModalVisible(false)}
-                  disabled={isDeletingScreens}
-                >
-                  <Text style={styles.cancelConfirmButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[
-                    styles.proceedDeleteButton,
-                    isDeletingScreens && styles.proceedDeleteButtonDisabled
-                  ]}
-                  onPress={confirmDeleteScreens}
-                  disabled={isDeletingScreens}
-                >
-                  {isDeletingScreens ? (
-                    <ActivityIndicator size="small" color="#ffffff" />
-                  ) : (
-                    <Ionicons name="trash" size={20} color="#ffffff" />
-                  )}
-                  <Text style={styles.proceedDeleteButtonText}>
-                    {isDeletingScreens ? 'Deleting...' : 'OK'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
             </View>
           </View>
         </Modal>
@@ -2952,15 +2760,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     paddingVertical:16,
   },
-
-
-
-
-
-
-
-
-
 
 modalOverlay: {
   flex: 1,
@@ -4335,206 +4134,5 @@ reportModalMessage: {
   },
   healthyScreensListContent: {
     paddingBottom: 20,
-  },
-  
-  // Delete functionality styles
-  deleteIconButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    padding: 4,
-    borderRadius: 12,
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-  },
-  deleteModalContent: {
-    backgroundColor: '#fff',
-    marginHorizontal: 20,
-    borderRadius: 20,
-    padding: 24,
-    maxHeight: '80%',
-    width: '90%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 12,
-  },
-  deleteScreensList: {
-    marginTop: 20,
-    maxHeight: 400,
-  },
-  deleteScreensListContent: {
-    paddingBottom: 20,
-  },
-  deleteScreensTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1e293b',
-    marginBottom: 16,
-  },
-  deleteScreenItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#f8fafc',
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  deleteScreenCheckbox: {
-    marginRight: 12,
-  },
-  deleteScreenInfo: {
-    flex: 1,
-  },
-  deleteScreenBarcode: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1e293b',
-    marginBottom: 4,
-  },
-  deleteScreenDate: {
-    fontSize: 14,
-    color: '#64748b',
-  },
-  deleteScreenStatusBadge: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    marginLeft: 8,
-  },
-  deleteScreenStatusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  statusHealthy: {
-    backgroundColor: '#10b981',
-  },
-  statusReparable: {
-    backgroundColor: '#f59e0b',
-  },
-  statusBeyondRepair: {
-    backgroundColor: '#ef4444',
-  },
-  noScreensToDelete: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: '#64748b',
-    fontStyle: 'italic',
-    marginTop: 20,
-  },
-  deleteModalActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-  },
-  cancelDeleteButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: '#f1f5f9',
-    marginRight: 8,
-    alignItems: 'center',
-  },
-  cancelDeleteButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  deleteSelectedButton: {
-    flex: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: '#ef4444',
-    marginLeft: 8,
-  },
-  deleteSelectedButtonDisabled: {
-    backgroundColor: '#fca5a5',
-    opacity: 0.6,
-  },
-  deleteSelectedButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginLeft: 8,
-  },
-  confirmDeleteModalContent: {
-    backgroundColor: '#fff',
-    marginHorizontal: 40,
-    borderRadius: 20,
-    padding: 32,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 12,
-  },
-  confirmDeleteIcon: {
-    marginBottom: 16,
-  },
-  confirmDeleteTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  confirmDeleteMessage: {
-    fontSize: 16,
-    color: '#64748b',
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 24,
-  },
-  confirmDeleteActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  cancelConfirmButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: '#f1f5f9',
-    marginRight: 8,
-    alignItems: 'center',
-  },
-  cancelConfirmButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  proceedDeleteButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: '#ef4444',
-    marginLeft: 8,
-  },
-  proceedDeleteButtonDisabled: {
-    backgroundColor: '#fca5a5',
-    opacity: 0.6,
-  },
-  proceedDeleteButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginLeft: 8,
   },
 });

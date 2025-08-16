@@ -192,6 +192,11 @@ const getAllScans = async (req, res) => {
 
 exports.getAllScans = getAllScans;
 
+// Import the screen action models
+const ProductionScreen = require("../models/ProductionScreen");
+const RepairScreen = require("../models/RepairScreen");
+const WriteOffScreen = require("../models/WriteOffScreen");
+
 // Notify admin about a screen action (send for repair / send to production / write off)
 const notifyScreenAction = async (req, res) => {
   try {
@@ -204,20 +209,69 @@ const notifyScreenAction = async (req, res) => {
       });
     }
 
-    // Very lightweight implementation for now: just log the action.
-    // Later this can be persisted and/or broadcast to desktop admin app.
-    console.log('📣 Screen action notification:', {
+    // Get user info for department
+    const User = require("../models/User");
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Save the action to the appropriate collection based on action type
+    let savedScreen;
+    let collectionName;
+
+    const screenData = {
+      barcode,
+      originalStatus: status,
+      actionType,
+      technician: userId,
+      originalSession: sessionId,
+      originalScanTimestamp: new Date(scannedAt),
+      actionTimestamp: new Date(),
+      department: user.department
+    };
+
+    switch (actionType) {
+      case 'PRODUCTION':
+        savedScreen = new ProductionScreen(screenData);
+        collectionName = 'for-production';
+        break;
+      case 'REPAIR':
+        savedScreen = new RepairScreen(screenData);
+        collectionName = 'for-repair';
+        break;
+      case 'WRITE_OFF':
+        savedScreen = new WriteOffScreen(screenData);
+        collectionName = 'write-offs';
+        break;
+      default:
+        return res.status(400).json({ error: 'Invalid action type' });
+    }
+
+    await savedScreen.save();
+
+    console.log(`📣 Screen action saved to ${collectionName} collection:`, {
       userId,
       barcode,
       status,
       actionType,
       scannedAt,
-      sessionId: sessionId || null
+      sessionId: sessionId || null,
+      savedId: savedScreen._id,
+      collection: collectionName
     });
 
     return res.status(200).json({
-      message: 'Notification received',
-      received: { barcode, status, actionType, scannedAt, sessionId: sessionId || null }
+      message: 'Action saved successfully',
+      saved: { 
+        barcode, 
+        status, 
+        actionType, 
+        scannedAt, 
+        sessionId: sessionId || null,
+        screenId: savedScreen._id,
+        collection: collectionName
+      }
     });
 
   } catch (error) {
@@ -265,3 +319,100 @@ const deleteScreens = async (req, res) => {
 };
 
 exports.deleteScreens = deleteScreens;
+
+// Get all production screens (for desktop admin app)
+const getProductionScreens = async (req, res) => {
+  try {
+    const { department, startDate, endDate } = req.query;
+
+    const filter = {};
+    if (department) filter.department = department;
+    if (startDate || endDate) {
+      filter.actionTimestamp = {};
+      if (startDate) filter.actionTimestamp.$gte = new Date(startDate);
+      if (endDate) filter.actionTimestamp.$lte = new Date(endDate);
+    }
+
+    const productionScreens = await ProductionScreen.find(filter)
+      .populate('technician', 'username department')
+      .populate('originalSession', 'startTime endTime')
+      .sort({ actionTimestamp: -1 });
+
+    console.log(`📊 Production screens fetched: ${productionScreens.length} screens`);
+
+    res.json({
+      productionScreens,
+      totalCount: productionScreens.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching production screens:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// Get all repair screens (for desktop admin app)
+const getRepairScreens = async (req, res) => {
+  try {
+    const { department, startDate, endDate } = req.query;
+
+    const filter = {};
+    if (department) filter.department = department;
+    if (startDate || endDate) {
+      filter.actionTimestamp = {};
+      if (startDate) filter.actionTimestamp.$gte = new Date(startDate);
+      if (endDate) filter.actionTimestamp.$lte = new Date(endDate);
+    }
+
+    const repairScreens = await RepairScreen.find(filter)
+      .populate('technician', 'username department')
+      .populate('originalSession', 'startTime endTime')
+      .sort({ actionTimestamp: -1 });
+
+    console.log(`🔧 Repair screens fetched: ${repairScreens.length} screens`);
+
+    res.json({
+      repairScreens,
+      totalCount: repairScreens.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching repair screens:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// Get all write-off screens (for desktop admin app)
+const getWriteOffScreens = async (req, res) => {
+  try {
+    const { department, startDate, endDate } = req.query;
+
+    const filter = {};
+    if (department) filter.department = department;
+    if (startDate || endDate) {
+      filter.actionTimestamp = {};
+      if (startDate) filter.actionTimestamp.$gte = new Date(startDate);
+      if (endDate) filter.actionTimestamp.$lte = new Date(endDate);
+    }
+
+    const writeOffScreens = await WriteOffScreen.find(filter)
+      .populate('technician', 'username department')
+      .populate('originalSession', 'startTime endTime')
+      .sort({ actionTimestamp: -1 });
+
+    console.log(`🗑️ Write-off screens fetched: ${writeOffScreens.length} screens`);
+
+    res.json({
+      writeOffScreens,
+      totalCount: writeOffScreens.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching write-off screens:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.getProductionScreens = getProductionScreens;
+exports.getRepairScreens = getRepairScreens;
+exports.getWriteOffScreens = getWriteOffScreens;
