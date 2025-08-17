@@ -195,10 +195,7 @@ const getAllScans = async (req, res) => {
 
 exports.getAllScans = getAllScans;
 
-// Import the screen action models
-const ProductionScreen = require("../models/ProductionScreen");
-const RepairScreen = require("../models/RepairScreen");
-const WriteOffScreen = require("../models/WriteOffScreen");
+// Screen action models are already imported at the top of the file
 
 // Notify admin about a screen action (send for repair / send to production / write off)
 const notifyScreenAction = async (req, res) => {
