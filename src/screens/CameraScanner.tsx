@@ -1,54 +1,92 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Alert,
-  SafeAreaView, StatusBar, Dimensions, Animated, Easing
+  View, Text, StyleSheet, TouchableOpacity,
+  SafeAreaView, StatusBar, Dimensions, Animated, Easing,
+  Modal, Pressable
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
 
 const { width, height } = Dimensions.get('window');
 
 export default function CameraScanner({ navigation, route }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [scannedData, setScannedData] = useState(null);
+  const [scanSound, setScanSound] = useState(null);
   const scanLineAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
   }, [permission]);
 
+  // Load scan sound effect
+  useEffect(() => {
+    const loadSound = async () => {
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          require('../../assets/SCANNER SOUND.mp3')
+        );
+        setScanSound(sound);
+      } catch (error) {
+        console.log('Error loading sound:', error);
+        // If sound file is not found, continue without sound
+        setScanSound(null);
+      }
+    };
+
+    loadSound();
+
+    // Cleanup function
+    return () => {
+      if (scanSound) {
+        scanSound.unloadAsync();
+      }
+    };
+  }, []);
+
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
         Animated.timing(scanLineAnim, {
-          toValue: height * 0.4,
-          duration: 1800,
-          easing: Easing.inOut(Easing.quad),
+          toValue: height * 0.6, // Go from bottom to top of scan frame
+          duration: 2000,
+          easing: Easing.bezier(0.25, 0.46, 0.45, 0.94), // Smooth bezier curve
           useNativeDriver: true,
         }),
         Animated.timing(scanLineAnim, {
-          toValue: 0,
-          duration: 1800,
-          easing: Easing.inOut(Easing.quad),
+          toValue: 0, // Back to bottom
+          duration: 2000,
+          easing: Easing.bezier(0.55, 0.055, 0.675, 0.19), // Different easing for return
           useNativeDriver: true,
         }),
       ])
     ).start();
   }, []);
 
-  const handleBarCodeScanned = ({ type, data }) => {
+  const handleBarCodeScanned = async ({ type, data }) => {
     if (scanned) return;
     setScanned(true);
+    
+    // Play scan sound effect
+    try {
+      if (scanSound) {
+        await scanSound.replayAsync();
+      }
+    } catch (error) {
+      console.log('Error playing sound:', error);
+    }
+    
+    setScannedData({ type, data });
+    setShowSuccessModal(true);
+  };
 
-    Alert.alert('Scanned Successfully', `Type: ${type}\nData: ${data}`, [
-      {
-        text: 'OK',
-        onPress: () => {
-          if (route?.params?.onScan) route.params.onScan(data);
-          navigation.goBack();
-        },
-      },
-    ]);
+  const handleSuccessModalClose = () => {
+    setShowSuccessModal(false);
+    if (route?.params?.onScan) route.params.onScan(scannedData.data);
+    navigation.goBack();
   };
 
   if (!permission) {
@@ -121,6 +159,47 @@ export default function CameraScanner({ navigation, route }) {
           </View>
         </View>
       </CameraView>
+
+      {/* Custom Success Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={showSuccessModal}
+        onRequestClose={handleSuccessModalClose}
+      >
+        <Pressable style={styles.modalOverlay} onPress={handleSuccessModalClose}>
+          <View style={styles.modalContent}>
+            <View style={styles.successIconContainer}>
+              <View style={styles.successIcon}>
+                <Ionicons name="checkmark" size={40} color="#fff" />
+              </View>
+            </View>
+            
+            <Text style={styles.successTitle}>SCREEN CAPTURED</Text>
+            
+            <View style={styles.detailsContainer}>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Type:</Text>
+                <Text style={styles.detailValue}>{scannedData?.type}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Data:</Text>
+                <Text style={styles.detailValue} numberOfLines={3}>
+                  {scannedData?.data}
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              style={styles.confirmButton} 
+              onPress={handleSuccessModalClose}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.confirmButtonText}>Continue</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -171,8 +250,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 3, borderRightWidth: 3, borderColor: '#fff',
   },
   scanLine: {
-    width: '100%', height: 2, backgroundColor: '#00FF00AA',
+    width: '100%', height: 3, 
+    backgroundColor: '#00FF00',
     position: 'absolute', left: 0,
+    shadowColor: '#00FF00',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 8,
   },
   instructions: {
     paddingBottom: 60, alignItems: 'center',
@@ -181,5 +266,80 @@ const styles = StyleSheet.create({
     color: '#fff', fontSize: 16, textAlign: 'center',
     backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 24,
     paddingVertical: 14, borderRadius: 20, marginBottom: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+  },
+  modalContent: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 15,
+    padding: 30,
+    width: '80%',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  successIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  successIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#0056B3',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 20,
+  },
+  detailsContainer: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  detailLabel: {
+    fontSize: 16,
+    color: '#888',
+    fontWeight: '500',
+  },
+  detailValue: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  confirmButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 8,
+    width: '100%',
+  },
+  confirmButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });

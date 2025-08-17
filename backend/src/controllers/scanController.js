@@ -2,6 +2,9 @@
 
 const Screen = require("../models/Screen");
 const TaskSession = require("../models/TaskSession");
+const ProductionScreen = require("../models/ProductionScreen");
+const RepairScreen = require("../models/RepairScreen");
+const WriteOffScreen = require("../models/WriteOffScreen");
 
 // Add a new scan
 const addScan = async (req, res) => {

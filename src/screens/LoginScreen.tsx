@@ -221,12 +221,8 @@ console.log("🚀 LoginScreen UPDATED VERSION is running!");
                      onChangeText={setUsername}
                      value={username}
                      autoCorrect={false}
-                     returnKeyType="next"
-                     blurOnSubmit={false}
-                     onSubmitEditing={() => {
-                       // Small delay to prevent jumping
-                       setTimeout(() => passwordRef.current?.focus(), 50);
-                     }}
+                     returnKeyType="done"
+                     blurOnSubmit={true}
                    />
                 </View>
               </View>

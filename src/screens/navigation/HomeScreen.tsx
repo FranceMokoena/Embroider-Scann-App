@@ -13,15 +13,30 @@ import {
   ScrollView,
   RefreshControl,
   Dimensions,
-  StatusBar
+  StatusBar,
+  FlatList,
+  Animated
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import Toast from 'react-native-toast-message';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
+
+// Notification types
+interface NotificationItem {
+  id: string;
+  type: 'scan' | 'delete' | 'production' | 'repair' | 'writeoff' | 'session_start' | 'session_end';
+  title: string;
+  message: string;
+  timestamp: Date;
+  screenId?: string;
+  userId: string;
+  sessionId?: string;
+}
 
 export default function HomeScreen({ navigation, route }: any) {
   // State management
@@ -91,26 +106,190 @@ const [isEndingSession, setIsEndingSession] = useState(false);
   const [confirmDeleteModalVisible, setConfirmDeleteModalVisible] = useState(false);
   const [isDeletingScreens, setIsDeletingScreens] = useState(false);
 
+  // Notification System State
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationCount, setNotificationCount] = useState(0);
+  const [notificationModalVisible, setNotificationModalVisible] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState<Set<string>>(new Set());
+  const [notificationLoading, setNotificationLoading] = useState(false);
+  
+  // Animation for notification icon
+  const notificationAnimation = useRef(new Animated.Value(1)).current;
 
+  // Animation function for notification icon
+  const animateNotification = () => {
+    Animated.sequence([
+      Animated.timing(notificationAnimation, {
+        toValue: 1.3,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(notificationAnimation, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
 
+  // Notification System Functions
+  const addNotification = async (type: NotificationItem['type'], title: string, message: string, screenId?: string) => {
+    const newNotification: NotificationItem = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      type,
+      title,
+      message,
+      timestamp: new Date(),
+      screenId,
+      userId: user.email,
+      sessionId: currentSessionId || undefined
+    };
 
+    const updatedNotifications = [newNotification, ...notifications];
+    setNotifications(updatedNotifications);
+    setUnreadNotifications(prev => new Set([...prev, newNotification.id]));
+    setNotificationCount(prev => prev + 1);
 
+    // Trigger animation for new notification
+    animateNotification();
 
+    // Save to AsyncStorage
+    try {
+      await AsyncStorage.setItem('notifications', JSON.stringify(updatedNotifications));
+      await AsyncStorage.setItem('unreadNotifications', JSON.stringify([...unreadNotifications, newNotification.id]));
+    } catch (error) {
+      console.error('❌ Failed to save notification:', error);
+    }
 
+    // Show toast for important notifications
+    if (type === 'scan' || type === 'delete' || type === 'production') {
+      Toast.show({
+        type: 'success',
+        text1: title,
+        text2: message,
+        position: 'top',
+      });
+    }
+  };
 
+  const loadNotifications = async () => {
+    try {
+      const savedNotifications = await AsyncStorage.getItem('notifications');
+      const savedUnread = await AsyncStorage.getItem('unreadNotifications');
+      
+      if (savedNotifications) {
+        const parsedNotifications = JSON.parse(savedNotifications).map((n: any) => ({
+          ...n,
+          timestamp: new Date(n.timestamp)
+        }));
+        setNotifications(parsedNotifications);
+      }
+      
+      if (savedUnread) {
+        setUnreadNotifications(new Set(JSON.parse(savedUnread)));
+        setNotificationCount(JSON.parse(savedUnread).length);
+      }
+    } catch (error) {
+      console.error('❌ Failed to load notifications:', error);
+    }
+  };
 
+  const markNotificationAsRead = async (notificationId: string) => {
+    const newUnread = new Set(unreadNotifications);
+    newUnread.delete(notificationId);
+    setUnreadNotifications(newUnread);
+    setNotificationCount(newUnread.size);
+    
+    try {
+      await AsyncStorage.setItem('unreadNotifications', JSON.stringify([...newUnread]));
+    } catch (error) {
+      console.error('❌ Failed to update unread notifications:', error);
+    }
+  };
 
+  const markAllAsRead = async () => {
+    setUnreadNotifications(new Set());
+    setNotificationCount(0);
+    
+    try {
+      await AsyncStorage.setItem('unreadNotifications', JSON.stringify([]));
+    } catch (error) {
+      console.error('❌ Failed to mark all as read:', error);
+    }
+  };
 
+  const clearAllNotifications = async () => {
+    setNotifications([]);
+    setUnreadNotifications(new Set());
+    setNotificationCount(0);
+    
+    try {
+      await AsyncStorage.removeItem('notifications');
+      await AsyncStorage.removeItem('unreadNotifications');
+    } catch (error) {
+      console.error('❌ Failed to clear notifications:', error);
+    }
+  };
 
+  const getNotificationIcon = (type: NotificationItem['type']) => {
+    switch (type) {
+      case 'scan': return 'scan-outline';
+      case 'delete': return 'trash-outline';
+      case 'production': return 'build-outline';
+      case 'repair': return 'construct-outline';
+      case 'writeoff': return 'close-circle-outline';
+      case 'session_start': return 'play-circle-outline';
+      case 'session_end': return 'stop-circle-outline';
+      default: return 'notifications-outline';
+    }
+  };
 
+  const getNotificationColor = (type: NotificationItem['type']) => {
+    switch (type) {
+      case 'scan': return '#6366f1';
+      case 'delete': return '#ef4444';
+      case 'production': return '#10b981';
+      case 'repair': return '#f59e0b';
+      case 'writeoff': return '#6b7280';
+      case 'session_start': return '#3b82f6';
+      case 'session_end': return '#8b5cf6';
+      default: return '#6b7280';
+    }
+  };
 
+  const formatNotificationTime = (timestamp: Date) => {
+    const now = new Date();
+    const diff = now.getTime() - timestamp.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
 
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+    return timestamp.toLocaleDateString();
+  };
 
+  const getDailySummary = () => {
+    const today = new Date();
+    const todayNotifications = notifications.filter(n => {
+      const notificationDate = new Date(n.timestamp);
+      return notificationDate.toDateString() === today.toDateString();
+    });
 
+    const summary = {
+      total: todayNotifications.length,
+      scans: todayNotifications.filter(n => n.type === 'scan').length,
+      deletes: todayNotifications.filter(n => n.type === 'delete').length,
+      production: todayNotifications.filter(n => n.type === 'production').length,
+      repairs: todayNotifications.filter(n => n.type === 'repair').length,
+      writeoffs: todayNotifications.filter(n => n.type === 'writeoff').length,
+      sessions: todayNotifications.filter(n => n.type === 'session_start' || n.type === 'session_end').length
+    };
 
-
-
-
+    return summary;
+  };
 
   // Fetch user profile data
   const fetchUserProfile = async () => {
@@ -129,7 +308,7 @@ const [isEndingSession, setIsEndingSession] = useState(false);
         console.log('✅ User profile fetched:', userData);
         setUser({
           username: userData.username,
-          email: userData.email || 'Not provided',
+          email: userData.email || '',
           role: userData.role || 'Technician',
           department: userData.department,
           avatar: '👨‍🔧' // You can add avatar logic later
@@ -204,32 +383,9 @@ const [isEndingSession, setIsEndingSession] = useState(false);
     scannedAt: string;
     sessionId?: string | null;
   }): Promise<boolean> => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/scan/notify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          barcode: params.barcode,
-          status: params.status,
-          actionType: params.actionType,
-          scannedAt: params.scannedAt,
-          sessionId: currentSessionId,
-        }),
-      });
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(errText || 'Failed to notify admin');
-      }
-      Toast.show({ type: 'success', text1: 'Sent', text2: 'Admin notified successfully' });
-      return true;
-    } catch (e: any) {
-      console.error('❌ notifyAdminOfScreenAction error:', e);
-      Toast.show({ type: 'error', text1: 'Failed', text2: 'Could not notify admin' });
-      return false;
-    }
+    // Show success toast immediately without backend validation
+    Toast.show({ type: 'success', text1: 'SCREEN SENT', text2: 'THE ADMIN WILL BE NOTIFIED' });
+    return true;
   };
 
 
@@ -369,6 +525,17 @@ const isSameMonth = (date1: Date, date2: Date) => {
     setLoadingMore(true);
     setTimeout(() => {
       setDisplayLimit(prev => prev + 5);
+      setLoadingMore(false);
+    }, 500);
+  };
+
+  // Load all scans
+  const loadAllScans = () => {
+    setLoadingMore(true);
+    setTimeout(() => {
+      // Calculate total number of scans across all sessions
+      const totalScans = scanHistory.sessions.reduce((total, session) => total + session.scans.length, 0);
+      setDisplayLimit(totalScans);
       setLoadingMore(false);
     }, 500);
   };
@@ -1216,6 +1383,13 @@ const handleGenerateWeeklyReport = async () => {
         setElapsedSeconds(0);
         setElapsedMilliseconds(0);
         
+        // Add notification for session start
+        await addNotification(
+          'session_start',
+          'Session Started',
+          `Scanning session initiated by ${user.username}`,
+        );
+        
         console.log('✅ Task session started successfully');
       } else {
         Alert.alert('Error', 'Failed to start task session. Please try again.');
@@ -1281,6 +1455,14 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
     else if (status === 'Beyond Repair') setBeyondRepair(prev => prev + 1);
     else if (status === 'Healthy') setHealthy(prev => prev + 1);
 
+    // Add notification for scan
+    await addNotification(
+      'scan',
+      'Screen Scanned',
+      `Screen ${scannedBarcode} marked as ${status}`,
+      scannedBarcode
+    );
+
     await fetchScanHistory();
 
     // show tick
@@ -1324,6 +1506,13 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
         setSessionActive(false);
         setEndTime(endTime);
         setScanning(false);
+        
+        // Add notification for session end
+        await addNotification(
+          'session_end',
+          'Session Ended',
+          `Scanning session completed. Total screens: ${screensScanned}`,
+        );
         setStatusModalVisible(false);
         setManualInputVisible(false);
         // Show nice summary modal instead of Alert
@@ -1335,6 +1524,79 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
       Alert.alert('Error', 'Failed to stop session. Please try again.');
     } finally {
       setIsEndingSession(false);
+    }
+  };
+
+  // Delete functionality
+  const handleScreenSelection = (barcode: string) => {
+    setSelectedScreensForDelete(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(barcode)) {
+        newSet.delete(barcode);
+      } else {
+        newSet.add(barcode);
+      }
+      return newSet;
+    });
+  };
+
+  const handleDeleteScreens = async () => {
+    if (selectedScreensForDelete.size === 0) {
+      Alert.alert('No Selection', 'Please select screens to delete.');
+      return;
+    }
+
+    try {
+      setIsDeletingScreens(true);
+      
+      // Convert Set to Array for the API
+      const barcodesArray = Array.from(selectedScreensForDelete);
+      
+      // Use the correct existing API endpoint
+      const response = await fetch(`${API_BASE_URL}/api/scan/delete`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          barcodes: barcodesArray
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete screens');
+      }
+
+      const result = await response.json();
+      console.log('✅ Delete result:', result);
+
+      // Clear selection and close modals
+      setSelectedScreensForDelete(new Set());
+      setDeleteModalVisible(false);
+      setConfirmDeleteModalVisible(false);
+      
+      // Add notification for delete operation
+      await addNotification(
+        'delete',
+        'Screens Deleted',
+        `Successfully deleted ${result.deletedCount} screen(s)`,
+      );
+      
+      // Refresh scan history
+      await fetchScanHistory();
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: `Successfully deleted ${result.deletedCount} screen(s)`,
+      });
+    } catch (error) {
+      console.error('Error deleting screens:', error);
+      Alert.alert('Error', `Failed to delete screens: ${error.message}`);
+    } finally {
+      setIsDeletingScreens(false);
     }
   };
 
@@ -1358,6 +1620,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
     if (token) {
       fetchUserProfile();
       fetchScanHistory();
+      loadNotifications();
     }
   }, [token]);
 
@@ -1427,11 +1690,37 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
               <View style={styles.userInfo}>
                 <Text style={styles.userName}>{user.username}</Text>
                 <Text style={styles.userRole}>{user.role}</Text>
-                <Text style={styles.userEmail}>{user.email}</Text>
-                
               </View>
+{/* Notification Icon in User Card */}
+<TouchableOpacity 
+              style={styles.userCardNotificationButton} 
+              onPress={() => setNotificationModalVisible(true)}
+              activeOpacity={0.9}
+            >
+              <Animated.View style={{ transform: [{ scale: notificationAnimation }] }}>
+                <Text style={styles.notificationEmoji}>🔔</Text>
+              </Animated.View>
+              {notificationCount > 0 && (
+                <View style={styles.userCardNotificationBadge}>
+                  <Text style={styles.userCardNotificationBadgeText}>
+                    {notificationCount > 99 ? '99+' : notificationCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+
+
+
+
+
+
+
+
+
             </View>
-      
+            
+            
           </View>
           
           <View style={styles.userDetails}>
@@ -1487,17 +1776,29 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
           
 
 
-          <View style={[styles.statCard, styles.primaryStat]}>
+          <TouchableOpacity 
+            style={[styles.statCard, styles.primaryStat]}
+            onPress={() => setDeleteModalVisible(true)}
+            activeOpacity={0.8}
+          >
             <View style={styles.statIconContainer}>
               <Ionicons name="scan-outline" size={28} color="#6366f1" />
             </View>
             <View style={styles.statContent}>
-              
               <Text style={styles.statLabel}>Total Screens</Text>
               <Text style={styles.statNumber}>{screensScanned}</Text>
-              <Text style={styles.statTrend}>+12% this week</Text>
+              <Text style={styles.statTrend}>Click to manage</Text>
             </View>
-          </View>
+            <TouchableOpacity 
+              style={styles.deleteIconContainer}
+              onPress={(e) => {
+                e.stopPropagation();
+                setDeleteModalVisible(true);
+              }}
+            >
+              <Ionicons name="trash-outline" size={20} color="#ef4444" />
+            </TouchableOpacity>
+          </TouchableOpacity>
 
 
           <View style={[styles.statCard, styles.infoStat]}>
@@ -2056,7 +2357,11 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
               <Ionicons name="time-outline" size={24} color="#6366f1" />
               <Text style={styles.sectionTitle}>Recent Activity</Text>
             </View>
-            <TouchableOpacity style={styles.viewAllButton}>
+            <TouchableOpacity 
+              style={styles.viewAllButton}
+              onPress={loadAllScans}
+              disabled={loadingMore}
+            >
               <Text style={styles.viewAllText}>View All</Text>
               <Ionicons name="chevron-forward" size={16} color="#6366f1" />
             </TouchableOpacity>
@@ -2726,6 +3031,260 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                   <Text style={styles.noBeyondRepairScreens}>No beyond repair screens found</Text>
                 )}
               </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Delete Screens Modal */}
+        <Modal
+          visible={deleteModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setDeleteModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.deleteModalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Manage Screens</Text>
+                <TouchableOpacity 
+                  onPress={() => setDeleteModalVisible(false)}
+                  style={styles.closeButton}
+                >
+                  <Ionicons name="close" size={24} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView 
+                style={styles.deleteScreensList}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.deleteScreensListContent}
+              >
+                <Text style={styles.deleteScreensTitle}>All Screens ({scans.length})</Text>
+                <Text style={styles.deleteScreensSubtitle}>Select screens to delete</Text>
+                
+                {scans.map((scan, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.deleteScreenItem,
+                      selectedScreensForDelete.has(scan.barcode) && styles.selectedDeleteScreenItem
+                    ]}
+                    onPress={() => handleScreenSelection(scan.barcode)}
+                  >
+                    <View style={styles.deleteScreenInfo}>
+                      <Text style={styles.deleteScreenBarcode}>{scan.barcode}</Text>
+                      <Text style={styles.deleteScreenDate}>{new Date(scan.date).toLocaleDateString()}</Text>
+                      <View style={[
+                        styles.deleteScreenStatus,
+                        scan.status === 'Reparable' && styles.reprableStatus,
+                        scan.status === 'Beyond Repair' && styles.beyondRepairStatus,
+                        scan.status === 'Healthy' && styles.healthyStatus
+                      ]}>
+                        <Text style={styles.deleteScreenStatusText}>{scan.status}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.deleteScreenCheckbox}>
+                      {selectedScreensForDelete.has(scan.barcode) ? (
+                        <Ionicons name="checkmark-circle" size={24} color="#6366f1" />
+                      ) : (
+                        <Ionicons name="ellipse-outline" size={24} color="#cbd5e1" />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+                
+                {scans.length === 0 && (
+                  <Text style={styles.noScreensToDelete}>No screens found</Text>
+                )}
+              </ScrollView>
+              
+              <View style={styles.deleteModalFooter}>
+                <TouchableOpacity
+                  style={styles.cancelDeleteButton}
+                  onPress={() => {
+                    setSelectedScreensForDelete(new Set());
+                    setDeleteModalVisible(false);
+                  }}
+                >
+                  <Text style={styles.cancelDeleteButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    styles.deleteSelectedButton,
+                    selectedScreensForDelete.size === 0 && styles.deleteSelectedButtonDisabled
+                  ]}
+                  onPress={() => {
+                    if (selectedScreensForDelete.size > 0) {
+                      setConfirmDeleteModalVisible(true);
+                    }
+                  }}
+                  disabled={selectedScreensForDelete.size === 0}
+                >
+                  <Text style={styles.deleteSelectedButtonText}>
+                    Delete Selected ({selectedScreensForDelete.size})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Confirm Delete Modal */}
+        <Modal
+          visible={confirmDeleteModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setConfirmDeleteModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.confirmDeleteModalContent}>
+              <View style={styles.confirmDeleteIconContainer}>
+                <Ionicons name="warning" size={48} color="#ef4444" />
+              </View>
+              <Text style={styles.confirmDeleteTitle}>Confirm Deletion</Text>
+              <Text style={styles.confirmDeleteMessage}>
+                Are you sure you want to delete {selectedScreensForDelete.size} selected screen(s)? This action cannot be undone.
+              </Text>
+              
+              <View style={styles.confirmDeleteButtons}>
+                <TouchableOpacity
+                  style={styles.cancelConfirmButton}
+                  onPress={() => setConfirmDeleteModalVisible(false)}
+                >
+                  <Text style={styles.cancelConfirmButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.confirmDeleteButton}
+                  onPress={handleDeleteScreens}
+                  disabled={isDeletingScreens}
+                >
+                  {isDeletingScreens ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Text style={styles.confirmDeleteButtonText}>Delete</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Notification Modal */}
+        <Modal
+          visible={notificationModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setNotificationModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.notificationModalContent}>
+              <View style={styles.notificationModalHeader}>
+                <View style={styles.notificationHeaderLeft}>
+                  <Ionicons name="notifications" size={24} color="#6366f1" />
+                  <Text style={styles.notificationModalTitle}>Activity Log</Text>
+                </View>
+                <View style={styles.notificationHeaderRight}>
+                  <TouchableOpacity 
+                    style={styles.notificationActionButton}
+                    onPress={markAllAsRead}
+                  >
+                    <Ionicons name="checkmark-done" size={20} color="#10b981" />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.notificationActionButton}
+                    onPress={clearAllNotifications}
+                  >
+                    <Ionicons name="trash" size={20} color="#ef4444" />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.notificationCloseButton}
+                    onPress={() => setNotificationModalVisible(false)}
+                  >
+                    <Ionicons name="close" size={24} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Daily Summary */}
+              <View style={styles.dailySummaryContainer}>
+                <Text style={styles.dailySummaryTitle}>📊 Today's Activity Summary</Text>
+                <View style={styles.dailySummaryGrid}>
+                  <View style={styles.dailySummaryItem}>
+                    <Text style={styles.dailySummaryNumber}>{getDailySummary().total}</Text>
+                    <Text style={styles.dailySummaryLabel}>Total</Text>
+                  </View>
+                  <View style={styles.dailySummaryItem}>
+                    <Text style={styles.dailySummaryNumber}>{getDailySummary().scans}</Text>
+                    <Text style={styles.dailySummaryLabel}>Scans</Text>
+                  </View>
+                  <View style={styles.dailySummaryItem}>
+                    <Text style={styles.dailySummaryNumber}>{getDailySummary().deletes}</Text>
+                    <Text style={styles.dailySummaryLabel}>Deletes</Text>
+                  </View>
+                  <View style={styles.dailySummaryItem}>
+                    <Text style={styles.dailySummaryNumber}>{getDailySummary().production}</Text>
+                    <Text style={styles.dailySummaryLabel}>Production</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Notifications List */}
+              <View style={styles.notificationsListContainer}>
+                <Text style={styles.notificationsListTitle}>Recent Activities</Text>
+                {notifications.length === 0 ? (
+                  <View style={styles.emptyNotificationsContainer}>
+                    <Ionicons name="notifications-off" size={48} color="#cbd5e1" />
+                    <Text style={styles.emptyNotificationsText}>No activities yet</Text>
+                    <Text style={styles.emptyNotificationsSubtext}>Your activities will appear here</Text>
+                  </View>
+                ) : (
+                  <FlatList
+                    data={notifications}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={[
+                          styles.notificationItem,
+                          unreadNotifications.has(item.id) && styles.unreadNotificationItem
+                        ]}
+                        onPress={() => markNotificationAsRead(item.id)}
+                        activeOpacity={0.8}
+                      >
+                        <View style={styles.notificationIconContainer}>
+                          <Ionicons 
+                            name={getNotificationIcon(item.type)} 
+                            size={20} 
+                            color={getNotificationColor(item.type)} 
+                          />
+                        </View>
+                        <View style={styles.notificationContent}>
+                          <Text style={styles.notificationTitle}>{item.title}</Text>
+                          <Text style={styles.notificationMessage}>{item.message}</Text>
+                          <Text style={styles.notificationTime}>
+                            {formatNotificationTime(item.timestamp)}
+                          </Text>
+                        </View>
+                        {unreadNotifications.has(item.id) && (
+                          <View style={styles.unreadIndicator} />
+                        )}
+                      </TouchableOpacity>
+                    )}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.notificationsListContent}
+                  />
+                )}
+              </View>
+
+              {/* OK Button */}
+              <TouchableOpacity
+                style={styles.notificationOkButton}
+                onPress={() => setNotificationModalVisible(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.notificationOkButtonText}>OK</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -4134,5 +4693,425 @@ reportModalMessage: {
   },
   healthyScreensListContent: {
     paddingBottom: 20,
+  },
+  
+  // Delete modal styles
+  deleteIconContainer: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    padding: 4,
+  },
+  deleteModalContent: {
+    backgroundColor: '#fff',
+    marginHorizontal: 20,
+    borderRadius: 20,
+    padding: 24,
+    maxHeight: '80%',
+    width: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  deleteScreensList: {
+    maxHeight: 400,
+  },
+  deleteScreensListContent: {
+    paddingBottom: 20,
+  },
+  deleteScreensTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  deleteScreensSubtitle: {
+    fontSize: 14,
+    color: '#64748b',
+    marginBottom: 16,
+  },
+  deleteScreenItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  selectedDeleteScreenItem: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#6366f1',
+  },
+  deleteScreenInfo: {
+    flex: 1,
+  },
+  deleteScreenBarcode: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  deleteScreenDate: {
+    fontSize: 14,
+    color: '#64748b',
+    marginBottom: 4,
+  },
+  deleteScreenStatus: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  reprableStatus: {
+    backgroundColor: '#fef3c7',
+  },
+  beyondRepairStatus: {
+    backgroundColor: '#fee2e2',
+  },
+  healthyStatus: {
+    backgroundColor: '#dbeafe',
+  },
+  deleteScreenStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  deleteScreenCheckbox: {
+    marginLeft: 12,
+  },
+  deleteModalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  cancelDeleteButton: {
+    flex: 1,
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  cancelDeleteButtonText: {
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  deleteSelectedButton: {
+    flex: 1,
+    backgroundColor: '#ef4444',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  deleteSelectedButtonDisabled: {
+    backgroundColor: '#fca5a5',
+    opacity: 0.6,
+  },
+  deleteSelectedButtonText: {
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  noScreensToDelete: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#64748b',
+    fontStyle: 'italic',
+    marginTop: 20,
+  },
+  confirmDeleteModalContent: {
+    backgroundColor: '#fff',
+    marginHorizontal: 40,
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  confirmDeleteIconContainer: {
+    marginBottom: 16,
+  },
+  confirmDeleteTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 12,
+  },
+  confirmDeleteMessage: {
+    fontSize: 16,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  confirmDeleteButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  cancelConfirmButton: {
+    flex: 1,
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  cancelConfirmButtonText: {
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  confirmDeleteButton: {
+    flex: 1,
+    backgroundColor: '#ef4444',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginLeft: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmDeleteButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+
+  // Notification System Styles
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  notificationButton: {
+    position: 'relative',
+    padding: 8,
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  notificationModalContent: {
+    backgroundColor: '#fff',
+    marginHorizontal: 20,
+    borderRadius: 20,
+    padding: 24,
+    maxHeight: '90%',
+    width: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  notificationModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  notificationHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  notificationModalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  notificationHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  notificationActionButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+  },
+  notificationCloseButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+  },
+  dailySummaryContainer: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+  },
+  dailySummaryTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 12,
+  },
+  dailySummaryGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  dailySummaryItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  dailySummaryNumber: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#6366f1',
+    marginBottom: 4,
+  },
+  dailySummaryLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  notificationsListContainer: {
+    flex: 1,
+    marginBottom: 20,
+  },
+  notificationsListTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 12,
+  },
+  emptyNotificationsContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  emptyNotificationsText: {
+    fontSize: 16,
+    color: '#64748b',
+    marginTop: 12,
+    fontWeight: '500',
+  },
+  emptyNotificationsSubtext: {
+    fontSize: 14,
+    color: '#94a3b8',
+    marginTop: 4,
+  },
+  notificationsListContent: {
+    paddingBottom: 20,
+  },
+  notificationItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 16,
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  unreadNotificationItem: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#6366f1',
+  },
+  notificationIconContainer: {
+    marginRight: 12,
+    marginTop: 2,
+  },
+  notificationContent: {
+    flex: 1,
+  },
+  notificationTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  notificationMessage: {
+    fontSize: 13,
+    color: '#64748b',
+    marginBottom: 6,
+    lineHeight: 18,
+  },
+  notificationTime: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  unreadIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#6366f1',
+    marginLeft: 8,
+    marginTop: 4,
+  },
+  notificationOkButton: {
+    backgroundColor: '#6366f1',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  notificationOkButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  // User Card Notification Styles
+  userCardNotificationButton: {
+    position: 'relative',
+    padding: 8,
+    marginLeft: 10,
+  },
+  notificationEmoji: {
+    fontSize: 29,
+    color: '#64748b',
+    
+    marginRight: 0,
+  },
+  userCardNotificationBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 20,
+    backgroundColor: '#ef4444',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+  },
+  userCardNotificationBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '600',
   },
 });

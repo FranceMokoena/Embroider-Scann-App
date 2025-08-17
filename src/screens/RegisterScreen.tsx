@@ -293,7 +293,7 @@ export default function RegisterScreen({ navigation }: any) {
                     autoCapitalize="none"
                     onChangeText={setUsername}
                     value={username}
-                    autoCorrect={false}
+                    autoCorrect={true}
                     returnKeyType="next"
                     blurOnSubmit={false}
                   />
@@ -311,7 +311,7 @@ export default function RegisterScreen({ navigation }: any) {
                     autoCapitalize="none"
                     onChangeText={setEmail}
                     value={email}
-                    autoCorrect={false}
+                    autoCorrect={true}
                     returnKeyType="next"
                     blurOnSubmit={false}
                     keyboardType="email-address"
@@ -440,6 +440,36 @@ export default function RegisterScreen({ navigation }: any) {
     </SafeAreaView>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const styles = StyleSheet.create({
   container: {
