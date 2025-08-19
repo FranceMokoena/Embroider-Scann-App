@@ -5,17 +5,13 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/ScannImage.png",
-    "splash": {
-      "image": "./assets/Good.gif",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "updates": {
       "fallbackToCacheTimeout": 0,
       "checkAutomatically": "ON_LOAD",
       "url": "https://u.expo.dev/fe1daac5-a2c1-4dd4-9603-d5091a7438b7"
     },
     "assetBundlePatterns": [
+      "assets/*",
       "assets/images/*",
       "assets/fonts/*"
     ],

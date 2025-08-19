@@ -1624,6 +1624,8 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
     }
   }, [token]);
 
+
+
   // Refresh scan history when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
@@ -1697,9 +1699,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
               onPress={() => setNotificationModalVisible(true)}
               activeOpacity={0.9}
             >
-              <Animated.View style={{ transform: [{ scale: notificationAnimation }] }}>
-                <Text style={styles.notificationEmoji}>🔔</Text>
-              </Animated.View>
+              <Text style={styles.notificationEmoji}>🔔</Text>
               {notificationCount > 0 && (
                 <View style={styles.userCardNotificationBadge}>
                   <Text style={styles.userCardNotificationBadgeText}>

@@ -40,6 +40,9 @@ export default function RegisterScreen({ navigation }: any) {
   const slideAnim = useRef(new Animated.Value(50)).current;
   const logoScale = useRef(new Animated.Value(0.8)).current;
 
+  // Add version logging for update verification
+  console.log('📝 RegisterScreen Version: 1.0.1 - Added warning message about screen removal');
+
   useEffect(() => {
     // Start animations when component mounts
     Animated.parallel([
@@ -276,6 +279,18 @@ export default function RegisterScreen({ navigation }: any) {
 
             {/* Enhanced Form Container */}
             <View style={styles.formContainer}>
+              {/* Warning Message */}
+              <View style={styles.warningContainer}>
+                <Ionicons name="warning" size={24} color="#f59e0b" style={styles.warningIcon} />
+                <View style={styles.warningContent}>
+                  <Text style={styles.warningTitle}>⚠️ Important Notice</Text>
+                  <Text style={styles.warningText}>
+                    This registration screen will be removed soon by the administrator. 
+                    If you lose your credentials, please contact the admin or IT support immediately.
+                  </Text>
+                </View>
+              </View>
+
               <View style={styles.formHeader}>
                 <Ionicons name="log-in-outline" size={32} color="#6366f1" />
                 <Text style={styles.formTitle}>Create Account</Text>
@@ -422,7 +437,7 @@ export default function RegisterScreen({ navigation }: any) {
 
               {/* Register link */}
                            <View style={styles.registerRow}>
-                             <Text style={styles.loginButtonText}>Don't have an account? </Text>
+                             <Text style={styles.loginButtonText}>Already have an account? </Text>
                              <Text
                                style={styles.loginButtonContent}
                                onPress={() => navigation.navigate('Login')}
@@ -710,6 +725,33 @@ registerRow: {
     color: '#6366f1',
     fontWeight: '600',
     marginLeft: 4,
+  },
+  warningContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  warningIcon: {
+    marginRight: 12,
+  },
+  warningContent: {
+    flex: 1,
+  },
+  warningTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#92400e',
+    marginBottom: 4,
+  },
+  warningText: {
+    fontSize: 14,
+    color: '#78350f',
+    lineHeight: 20,
   },
 
 

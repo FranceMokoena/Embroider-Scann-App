@@ -112,24 +112,27 @@ export default function CameraScanner({ navigation, route }) {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
-      <CameraView
-        style={styles.camera}
-        onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-        barcodeScannerSettings={{
-          barcodeTypes: [
-            'qr',
-            'code128',
-            'code39',
-            'ean13',
-            'ean8',
-            'upc_a',
-            'upc_e',
-            'pdf417',
-            'aztec',
-            'datamatrix'
-          ],
-        }}
-      >
+      <View style={styles.cameraContainer}>
+        <CameraView
+          style={styles.camera}
+          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+          barcodeScannerSettings={{
+            barcodeTypes: [
+              'qr',
+              'code128',
+              'code39',
+              'ean13',
+              'ean8',
+              'upc_a',
+              'upc_e',
+              'pdf417',
+              'aztec',
+              'datamatrix'
+            ],
+          }}
+        />
+        
+        {/* Overlay positioned absolutely on top of camera */}
         <View style={styles.overlay}>
           {/* Header */}
           <View style={styles.header}>
@@ -158,7 +161,7 @@ export default function CameraScanner({ navigation, route }) {
             </Text>
           </View>
         </View>
-      </CameraView>
+      </View>
 
       {/* Custom Success Modal */}
       <Modal
@@ -217,8 +220,17 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '500' },
+  cameraContainer: { flex: 1, position: 'relative' },
   camera: { flex: 1 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'space-between' },
+  overlay: { 
+    position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    right: 0, 
+    bottom: 0, 
+    backgroundColor: 'rgba(0,0,0,0.3)', 
+    justifyContent: 'space-between' 
+  },
   header: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40,
