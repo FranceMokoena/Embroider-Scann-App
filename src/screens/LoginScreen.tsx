@@ -33,8 +33,10 @@ export default function LoginScreen({ navigation }: any) {
   const [showPassword, setShowPassword] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const passwordRef = useRef(null);
- const [termsVisible, setTermsVisible] = useState(false);
- const [ForgotPassVisible,setForgotPassVisible] =useState(false);
+   const [termsVisible, setTermsVisible] = useState(false);
+  const [ForgotPassVisible,setForgotPassVisible] =useState(false);
+  const [warningModalVisible, setWarningModalVisible] = useState(false);
+  const [noAccountModalVisible, setNoAccountModalVisible] = useState(false);
 
   
 
@@ -125,9 +127,10 @@ export default function LoginScreen({ navigation }: any) {
           text1: 'Welcome Back!',
           text2: 'Successfully signed in'
         });
-console.log("🚀 LoginScreen UPDATED VERSION is running!");
+        console.log("🚀 LoginScreen UPDATED VERSION is running!");
 
-        navigation.replace('Home', { token: data.token });
+        // Show professional warning modal
+        setWarningModalVisible(true);
       } else {
         const errorMessage = data.error || `Login failed (${res.status})`;
         Toast.show({
@@ -150,6 +153,15 @@ console.log("🚀 LoginScreen UPDATED VERSION is running!");
     }
   };
 
+  const handleWarningAcknowledge = () => {
+    setWarningModalVisible(false);
+    AsyncStorage.getItem('token').then(token => {
+      navigation.replace('Home', { token });
+    });
+  };
+
+
+
 
 
   const handleForgotPassword = () => {
@@ -158,10 +170,15 @@ console.log("🚀 LoginScreen UPDATED VERSION is running!");
 
   };
 
-  const handleTermsPress = () => {//const [termsVisible, setTermsVisible] = useState(false);
-  setTermsVisible(true);
-  console.log("🚀 LoginScreen UPDATED VERSION is running!");
-};
+  const handleTermsPress = () => {
+    setTermsVisible(true);
+    console.log("🚀 LoginScreen UPDATED VERSION is running!");
+  };
+
+  const handleNoAccountPress = () => {
+    setNoAccountModalVisible(true);
+    console.log("🚀 LoginScreen UPDATED VERSION is running!");
+  };
 
 
   return (
@@ -196,8 +213,8 @@ console.log("🚀 LoginScreen UPDATED VERSION is running!");
               ]}
             >
               <View style={styles.logoContainer}>
-                <Text style={styles.logoText}>Embroidery-Tech</Text>
-                <Text style={styles.logoSubtitle}>Professional Screen Management</Text>
+                <Text style={styles.logoText}>Amrod</Text>
+                <Text style={styles.logoSubtitle}>Professional Digital Asset Tracking System</Text>
               </View>
             </Animated.View>
 
@@ -326,15 +343,161 @@ console.log("🚀 LoginScreen UPDATED VERSION is running!");
   </View>
 </Modal>
 
+{/* Professional Warning Modal */}
+<Modal
+  visible={warningModalVisible}
+  transparent
+  animationType="fade"
+  onRequestClose={() => {}}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.warningModalContent}>
+      {/* Warning Header */}
+      <View style={styles.warningHeader}>
+        <View style={styles.warningIconContainer}>
+          <Ionicons name="shield-checkmark" size={48} color="#dc2626" />
+        </View>
+        <Text style={styles.warningTitle}>⚠️ IMPORTANT NOTICE</Text>
+        <Text style={styles.warningSubtitle}>Amrod Monitoring System</Text>
+      </View>
 
+      {/* Warning Content */}
+      <ScrollView 
+        style={styles.warningScrollView}
+        showsVerticalScrollIndicator={true}
+        contentContainerStyle={styles.warningScrollContent}
+        bounces={true}
+      >
+        <Text style={styles.warningMessage}>
+          Dear Technician,
+        </Text>
+        
+        <Text style={styles.warningMessage}>
+          This is an official notification that <Text style={styles.highlightText}>ALL OPERATIONS</Text> performed within this application are being continuously monitored, recorded, and managed by:
+        </Text>
 
+        <View style={styles.adminSection}>
+          <View style={styles.adminItem}>
+            <Ionicons name="business-outline" size={20} color="#dc2626" />
+            <Text style={styles.adminText}>Amrod Administration Team</Text>
+          </View>
+          <View style={styles.adminItem}>
+            <Ionicons name="shield-outline" size={20} color="#dc2626" />
+            <Text style={styles.adminText}>IT Security & Monitoring Experts</Text>
+          </View>
+          <View style={styles.adminItem}>
+            <Ionicons name="document-text-outline" size={20} color="#dc2626" />
+            <Text style={styles.adminText}>System Audit & Compliance Officers</Text>
+          </View>
+        </View>
+
+        <Text style={styles.warningMessage}>
+          The following operations are being tracked and logged:
+        </Text>
+
+        <View style={styles.operationsList}>
+          <View style={styles.operationItem}>
+            <Ionicons name="scan-outline" size={20} color="#dc2626" />
+            <Text style={styles.operationText}>Screen Scanning & Barcode Processing</Text>
+          </View>
+          <View style={styles.operationItem}>
+            <Ionicons name="analytics-outline" size={20} color="#dc2626" />
+            <Text style={styles.operationText}>Screen Status Assessment (Reparable/Beyond Repair/Healthy)</Text>
+          </View>
+          <View style={styles.operationItem}>
+            <Ionicons name="time-outline" size={20} color="#dc2626" />
+            <Text style={styles.operationText}>Session Management (Start/Stop Times)</Text>
+          </View>
+          <View style={styles.operationItem}>
+            <Ionicons name="document-text-outline" size={20} color="#dc2626" />
+            <Text style={styles.operationText}>Report Generation & Data Export</Text>
+          </View>
+          <View style={styles.operationItem}>
+            <Ionicons name="trash-outline" size={20} color="#dc2626" />
+            <Text style={styles.operationText}>Screen Record Deletion Operations</Text>
+          </View>
+          <View style={styles.operationItem}>
+            <Ionicons name="rocket-outline" size={20} color="#dc2626" />
+            <Text style={styles.operationText}>Production Queue Management</Text>
+          </View>
+          <View style={styles.operationItem}>
+            <Ionicons name="notifications-outline" size={20} color="#dc2626" />
+            <Text style={styles.operationText}>Notification & Alert Systems</Text>
+          </View>
+          <View style={styles.operationItem}>
+            <Ionicons name="person-outline" size={20} color="#dc2626" />
+            <Text style={styles.operationText}>User Authentication & Session Activities</Text>
+          </View>
+        </View>
+
+        <Text style={styles.warningMessage}>
+          <Text style={styles.highlightText}>By clicking "I ACKNOWLEDGE",</Text> you confirm that you understand all your activities are being monitored for quality assurance, security, and compliance purposes.
+        </Text>
+
+        <Text style={styles.warningMessage}>
+          This monitoring is essential for maintaining operational excellence and ensuring the highest standards of screen management quality.
+        </Text>
+      </ScrollView>
+
+      {/* Acknowledge Button */}
+      <TouchableOpacity 
+        style={styles.acknowledgeButton}
+        onPress={handleWarningAcknowledge}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="checkmark-circle" size={24} color="#fff" />
+        <Text style={styles.acknowledgeButtonText}>I ACKNOWLEDGE & PROCEED</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+
+{/* No Account Modal */}
+<Modal
+  visible={noAccountModalVisible}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setNoAccountModalVisible(false)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+      <View style={styles.modalIconContainer}>
+        <Ionicons name="person-add-outline" size={48} color="#6366f1" />
+      </View>
+      <Text style={styles.modalTitle}>🔐 Account Access Required</Text>
+      <Text style={styles.modalMessage}>
+        To access the Embroidery Tech system, you need valid credentials from your administrator.
+      </Text>
+      <Text style={styles.modalMessage}>
+        Please contact your IT administrator or system manager to request account credentials.
+      </Text>
+      <View style={styles.contactInfo}>
+        <View style={styles.contactItem}>
+          <Ionicons name="business-outline" size={20} color="#6366f1" />
+          <Text style={styles.contactText}>IT Department</Text>
+        </View>
+        <View style={styles.contactItem}>
+          <Ionicons name="mail-outline" size={20} color="#6366f1" />
+          <Text style={styles.contactText}>website@amrod.co.za</Text>
+        </View>
+        <View style={styles.contactItem}>
+          <Ionicons name="call-outline" size={20} color="#6366f1" />
+          <Text style={styles.contactText}>+1-800-AMROD</Text>
+        </View>
+      </View>
+      <TouchableOpacity style={styles.modalButton} onPress={() => setNoAccountModalVisible(false)}>
+        <Text style={styles.modalButtonText}>I Understand</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
 
               {/* Register link */}
               <View style={styles.registerRow}>
                 <Text style={styles.registerPrompt}>Don't have an account? </Text>
                 <Text
                   style={styles.registerLink}
-                  onPress={() => navigation.navigate('Register')}
+                  onPress={handleNoAccountPress}
                   suppressHighlighting
                 >
                   Sign up
@@ -601,8 +764,138 @@ modalButtonText: {
     textAlign: 'center',
     lineHeight: 18,
   },
-  footerLink: {
+    footerLink: {
     color: '#6366f1',
     fontWeight: '600',
+  },
+  // Warning Modal Styles
+  warningModalContent: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#fff',
+    padding: 20,
+    elevation: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+  },
+  warningHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingTop: 20,
+  },
+  warningIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#fef3f2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  warningTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 5,
+  },
+  warningSubtitle: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  warningScrollView: {
+    flex: 1,
+    marginBottom: 20,
+  },
+  warningScrollContent: {
+    paddingBottom: 10,
+    alignItems: 'center',
+  },
+  warningMessage: {
+    fontSize: 16,
+    color: '#475569',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 15,
+    paddingHorizontal: 5,
+  },
+  highlightText: {
+    fontWeight: '700',
+    color: '#dc2626',
+  },
+  adminSection: {
+    marginVertical: 15,
+  },
+  adminItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 10,
+  },
+  adminText: {
+    fontSize: 15,
+    color: '#374151',
+    fontWeight: '500',
+    marginLeft: 10,
+  },
+  operationsList: {
+    marginVertical: 15,
+    width: '100%',
+  },
+  operationItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    paddingHorizontal: 10,
+  },
+  operationText: {
+    fontSize: 15,
+    color: '#475569',
+    marginLeft: 10,
+    flexShrink: 1,
+    lineHeight: 20,
+  },
+  acknowledgeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#dc2626',
+    borderRadius: 12,
+    paddingVertical: 15,
+    paddingHorizontal: 25,
+    marginBottom: 20,
+    shadowColor: '#dc2626',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  acknowledgeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 10,
+  },
+  modalIconContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  contactInfo: {
+    marginVertical: 16,
+    paddingHorizontal: 10,
+  },
+  contactItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 10,
+  },
+  contactText: {
+    fontSize: 14,
+    color: '#475569',
+    marginLeft: 10,
+    fontWeight: '500',
   },
 });

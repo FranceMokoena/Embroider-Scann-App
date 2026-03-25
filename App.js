@@ -310,7 +310,7 @@ export default function App() {
           ]}
         >
           
-          <Text style={styles.scannerText}>Advanced Scanning Technology</Text>
+          <Text style={styles.scannerText}>Amrod Digital Asset Tracking System</Text>
         </Animated.View>
 
         {/* Loading indicator */}
@@ -353,9 +353,9 @@ export default function App() {
               color="#6366f1"
               style={{ marginBottom: 10 }}
             />
-            <Text style={styles.modalTitle}>Update Available</Text>
+            <Text style={styles.modalTitle}>Update Available!</Text>
             <Text style={styles.modalSubtitle}>
-              A new version of the app is ready. Update now for the best experience.
+              A new version Amrod App is ready. Update now for the best experience.
             </Text>
 
             <TouchableOpacity

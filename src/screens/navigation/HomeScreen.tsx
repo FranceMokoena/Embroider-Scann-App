@@ -94,8 +94,11 @@ const [reportsFilter, setReportsFilter] = useState<'all' | 'reparable' | 'beyond
   const [modalButtonLoading, setModalButtonLoading] = useState(false);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [actionStatusById, setActionStatusById] = useState<{ [key: string]: 'idle' | 'loading' | 'success' }>({});
-const [isStartingSession, setIsStartingSession] = useState(false);
+  const [isStartingSession, setIsStartingSession] = useState(false);
 const [isEndingSession, setIsEndingSession] = useState(false);
+const [reminderModalVisible, setReminderModalVisible] = useState(false);
+const [lastReminderTime, setLastReminderTime] = useState<number>(0);
+const [isLogoutReminder, setIsLogoutReminder] = useState(false);
   
   // New state for clickable stats
   const [defectiveScreensModalVisible, setDefectiveScreensModalVisible] = useState(false);
@@ -289,6 +292,115 @@ const [isEndingSession, setIsEndingSession] = useState(false);
     };
 
     return summary;
+  };
+
+  // Get real-time scan statistics for notifications
+  const getRealTimeNotifications = () => {
+    const notifications = [];
+
+    // Healthy screens notification
+    if (healthy > 0) {
+      notifications.push({
+        id: 'healthy-screens',
+        sender: 'System Manager',
+        avatar: '👨‍💼',
+        title: 'Production Ready Screens',
+        message: `Hello! I noticed you have ${healthy} healthy screen(s) that are ready for production. Please remember to notify the admin about these screens so they can be moved to the production queue.`,
+        timestamp: new Date(),
+        priority: 'high',
+        isRead: false,
+        action: 'Send to Production',
+        count: healthy,
+        category: 'Production'
+      });
+    }
+
+    // Reparable screens notification
+    if (reparable > 0) {
+      notifications.push({
+        id: 'reparable-screens',
+        sender: 'Quality Control',
+        avatar: '🔧',
+        title: 'Screens Requiring Repair',
+        message: `Hi there! We've identified ${reparable} screen(s) that need repair work. Please notify the admin about these screens so they can be sent to the repair department.`,
+        timestamp: new Date(),
+        priority: 'medium',
+        isRead: false,
+        action: 'Send for Repair',
+        count: reparable,
+        category: 'Repair'
+      });
+    }
+
+    // Beyond repair screens notification
+    if (beyondRepair > 0) {
+      notifications.push({
+        id: 'beyond-repair-screens',
+        sender: 'Technical Assessment',
+        avatar: '⚠️',
+        title: 'Screens Beyond Repair',
+        message: `Important notice: ${beyondRepair} screen(s) have been marked as beyond repair. These need to be written off. Please notify the admin immediately for proper disposal procedures.`,
+        timestamp: new Date(),
+        priority: 'high',
+        isRead: false,
+        action: 'Write Off',
+        count: beyondRepair,
+        category: 'Disposal'
+      });
+    }
+
+    // Total scans notification
+    if (screensScanned > 0) {
+      notifications.push({
+        id: 'total-scans',
+        sender: 'Performance Tracker',
+        avatar: '📊',
+        title: 'Daily Progress Update',
+        message: `Great work today! You've successfully scanned ${screensScanned} screen(s). Keep up the excellent performance!`,
+        timestamp: new Date(),
+        priority: 'low',
+        isRead: false,
+        action: 'View Details',
+        count: screensScanned,
+        category: 'Progress'
+      });
+    }
+
+    // Session status notification
+    if (sessionActive) {
+      notifications.push({
+        id: 'active-session',
+        sender: 'Session Monitor',
+        avatar: '⏱️',
+        title: 'Active Scanning Session',
+        message: `Your scanning session is currently active and running for ${formatElapsedTime(elapsedMilliseconds)}. You're doing great!`,
+        timestamp: new Date(),
+        priority: 'medium',
+        isRead: false,
+        action: 'End Session',
+        count: null,
+        category: 'Session'
+      });
+    }
+
+    // Report reminder notification
+    if (screensScanned > 5) {
+      notifications.push({
+        id: 'report-reminder',
+        sender: 'Report System',
+        avatar: '📋',
+        title: 'Report Generation Reminder',
+        message: `You have ${screensScanned} scans completed. Consider generating a daily report to document your work and maintain records.`,
+        timestamp: new Date(),
+        priority: 'medium',
+        isRead: false,
+        action: 'Generate Report',
+        count: screensScanned,
+        category: 'Reports'
+      });
+    }
+
+    return notifications;
   };
 
   // Fetch user profile data
@@ -802,7 +914,7 @@ const isSameMonth = (date1: Date, date2: Date) => {
       <body>
         <div class="header">
           <div class="logo">Technicial Report</div>
-          <div class="subtitle">Embroidery-Tech Professional Screen Management System</div>
+          <div class="subtitle">Amrod Digital Asset Tracking System</div>
         </div>
         
         <div class="summary">
@@ -846,7 +958,7 @@ const isSameMonth = (date1: Date, date2: Date) => {
         
         <div class="footer">
           <p>Report generated on ${currentDate} at ${currentTime}</p>
-          <p>Embroidery-Tech Professional Screen Management System</p>
+          <p>Amrod Digital Asset Tracking System</p>
         </div>
       </body>
       </html>
@@ -982,7 +1094,7 @@ const isSameMonth = (date1: Date, date2: Date) => {
           </tbody>
         </table>
         <div class="footer">
-          <p>Embroidery-Tech Professional Screen Management System</p>
+          <p>Amrod Digital Asset Tracking System</p>
         </div>
       </body>
       </html>
@@ -1163,7 +1275,7 @@ const isSameMonth = (date1: Date, date2: Date) => {
           </tbody>
         </table>
         <div class="footer">
-          <p>Embroidery-Tech Professional Screen Management System</p>
+          <p>Amrod Digital Asset Tracking System System</p>
         </div>
       </body>
     </html>
@@ -1290,7 +1402,7 @@ const generateWeeklyReportHTML = () => {
         </tbody>
       </table>
       <div class="footer">
-        <p>Embroidery-Tech Professional Screen Management System</p>
+        <p>Amrod Digital Asset Tracking System</p>
       </div>
     </body>
     </html>
@@ -1601,7 +1713,15 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
   };
 
   const handleLogout = () => {
-   
+    // Show reminder modal before logout
+    setIsLogoutReminder(true);
+    setReminderModalVisible(true);
+  };
+
+  const handleLogoutConfirm = () => {
+    // Close reminder modal and proceed with logout
+    setReminderModalVisible(false);
+    setIsLogoutReminder(false);
     navigation.reset({
       index: 0,
       routes: [{ name: 'Login' }], 
@@ -1614,6 +1734,27 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
     // You can add navigation logic here to show screens with the selected status
     console.log(`Selected defective type: ${type}`);
   };
+
+  // Reminder modal function
+  const showReminderModal = () => {
+    const now = Date.now();
+    const thirtyMinutes = 30 * 60 * 1000; // 30 minutes in milliseconds
+    
+    if (now - lastReminderTime >= thirtyMinutes) {
+      setIsLogoutReminder(false); // Regular reminder, not logout
+      setReminderModalVisible(true);
+      setLastReminderTime(now);
+    }
+  };
+
+  // Timer for reminder modal (check every 5 minutes)
+  useEffect(() => {
+    const reminderInterval = setInterval(() => {
+      showReminderModal();
+    }, 5 * 60 * 1000); // Check every 5 minutes
+
+    return () => clearInterval(reminderInterval);
+  }, [lastReminderTime]);
 
   // Fetch user profile and scan history on component mount
   useEffect(() => {
@@ -1694,9 +1835,18 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                 <Text style={styles.userRole}>{user.role}</Text>
               </View>
 {/* Notification Icon in User Card */}
-<TouchableOpacity 
+            <TouchableOpacity 
               style={styles.userCardNotificationButton} 
-              onPress={() => setNotificationModalVisible(true)}
+              onPress={() => {
+                setNotificationModalVisible(true);
+                // Clear notification count when clicked
+                setNotificationCount(0);
+                setUnreadNotifications(new Set());
+                // Save to AsyncStorage
+                AsyncStorage.setItem('unreadNotifications', JSON.stringify([])).catch(error => {
+                  console.error('❌ Failed to clear notification count:', error);
+                });
+              }}
               activeOpacity={0.9}
             >
               <Text style={styles.notificationEmoji}>🔔</Text>
@@ -3183,21 +3333,23 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
               <View style={styles.notificationModalHeader}>
                 <View style={styles.notificationHeaderLeft}>
                   <Ionicons name="notifications" size={24} color="#6366f1" />
-                  <Text style={styles.notificationModalTitle}>Activity Log</Text>
+                  <TouchableOpacity
+                    style={styles.markAsReadButton}
+                    onPress={() => {
+                      // Clear notification count when tick is clicked
+                      setNotificationCount(0);
+                      setUnreadNotifications(new Set());
+                      // Save to AsyncStorage
+                      AsyncStorage.setItem('unreadNotifications', JSON.stringify([])).catch(error => {
+                        console.error('❌ Failed to clear notification count:', error);
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.markAsReadIcon}>✅</Text>
+                  </TouchableOpacity>
                 </View>
                 <View style={styles.notificationHeaderRight}>
-                  <TouchableOpacity 
-                    style={styles.notificationActionButton}
-                    onPress={markAllAsRead}
-                  >
-                    <Ionicons name="checkmark-done" size={20} color="#10b981" />
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.notificationActionButton}
-                    onPress={clearAllNotifications}
-                  >
-                    <Ionicons name="trash" size={20} color="#ef4444" />
-                  </TouchableOpacity>
                   <TouchableOpacity 
                     style={styles.notificationCloseButton}
                     onPress={() => setNotificationModalVisible(false)}
@@ -3207,68 +3359,103 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                 </View>
               </View>
 
-              {/* Daily Summary */}
+              {/* Real-time Statistics Summary */}
               <View style={styles.dailySummaryContainer}>
-                <Text style={styles.dailySummaryTitle}>📊 Today's Activity Summary</Text>
+                <Text style={styles.dailySummaryTitle}>📊 Current Session Statistics</Text>
                 <View style={styles.dailySummaryGrid}>
                   <View style={styles.dailySummaryItem}>
-                    <Text style={styles.dailySummaryNumber}>{getDailySummary().total}</Text>
-                    <Text style={styles.dailySummaryLabel}>Total</Text>
+                    <Text style={styles.dailySummaryNumber}>{screensScanned}</Text>
+                    <Text style={styles.dailySummaryLabel}>Total Scans</Text>
                   </View>
                   <View style={styles.dailySummaryItem}>
-                    <Text style={styles.dailySummaryNumber}>{getDailySummary().scans}</Text>
-                    <Text style={styles.dailySummaryLabel}>Scans</Text>
+                    <Text style={styles.dailySummaryNumber}>{healthy}</Text>
+                    <Text style={styles.dailySummaryLabel}>Healthy</Text>
                   </View>
                   <View style={styles.dailySummaryItem}>
-                    <Text style={styles.dailySummaryNumber}>{getDailySummary().deletes}</Text>
-                    <Text style={styles.dailySummaryLabel}>Deletes</Text>
+                    <Text style={styles.dailySummaryNumber}>{reparable}</Text>
+                    <Text style={styles.dailySummaryLabel}>Reparable</Text>
                   </View>
                   <View style={styles.dailySummaryItem}>
-                    <Text style={styles.dailySummaryNumber}>{getDailySummary().production}</Text>
-                    <Text style={styles.dailySummaryLabel}>Production</Text>
+                    <Text style={styles.dailySummaryNumber}>{beyondRepair}</Text>
+                    <Text style={styles.dailySummaryLabel}>Beyond Repair</Text>
                   </View>
                 </View>
               </View>
 
-              {/* Notifications List */}
+              {/* Real-time Notifications List */}
               <View style={styles.notificationsListContainer}>
-                <Text style={styles.notificationsListTitle}>Recent Activities</Text>
-                {notifications.length === 0 ? (
+                <Text style={styles.notificationsListTitle}>📢 Action Required Notifications</Text>
+                {getRealTimeNotifications().length === 0 ? (
                   <View style={styles.emptyNotificationsContainer}>
-                    <Ionicons name="notifications-off" size={48} color="#cbd5e1" />
-                    <Text style={styles.emptyNotificationsText}>No activities yet</Text>
-                    <Text style={styles.emptyNotificationsSubtext}>Your activities will appear here</Text>
+                    <Ionicons name="checkmark-circle" size={48} color="#10b981" />
+                    <Text style={styles.emptyNotificationsText}>All caught up!</Text>
+                    <Text style={styles.emptyNotificationsSubtext}>No pending actions required</Text>
                   </View>
                 ) : (
                   <FlatList
-                    data={notifications}
+                    data={getRealTimeNotifications()}
                     keyExtractor={(item) => item.id}
                     renderItem={({ item }) => (
                       <TouchableOpacity
                         style={[
                           styles.notificationItem,
-                          unreadNotifications.has(item.id) && styles.unreadNotificationItem
+                          item.priority === 'high' && styles.highPriorityNotificationItem,
+                          item.priority === 'medium' && styles.mediumPriorityNotificationItem
                         ]}
-                        onPress={() => markNotificationAsRead(item.id)}
+                        onPress={() => {
+                          // Handle different notification actions
+                          switch(item.id) {
+                            case 'healthy-screens':
+                              setNotificationModalVisible(false);
+                              setNonDefectiveScreensModalVisible(true);
+                              break;
+                            case 'reparable-screens':
+                              setNotificationModalVisible(false);
+                              setSelectedDefectiveType('Reparable');
+                              setDefectiveScreensModalVisible(true);
+                              break;
+                            case 'beyond-repair-screens':
+                              setNotificationModalVisible(false);
+                              setSelectedDefectiveType('Beyond Repair');
+                              setDefectiveScreensModalVisible(true);
+                              break;
+                            case 'active-session':
+                              setNotificationModalVisible(false);
+                              // Could trigger session end
+                              break;
+                            case 'report-reminder':
+                              setNotificationModalVisible(false);
+                              setReportModalVisible(true);
+                              break;
+                            default:
+                              // Just close modal for other notifications
+                              setNotificationModalVisible(false);
+                          }
+                        }}
                         activeOpacity={0.8}
                       >
                         <View style={styles.notificationIconContainer}>
                           <Ionicons 
                             name={getNotificationIcon(item.type)} 
-                            size={20} 
+                            size={24} 
                             color={getNotificationColor(item.type)} 
                           />
                         </View>
                         <View style={styles.notificationContent}>
                           <Text style={styles.notificationTitle}>{item.title}</Text>
                           <Text style={styles.notificationMessage}>{item.message}</Text>
-                          <Text style={styles.notificationTime}>
-                            {formatNotificationTime(item.timestamp)}
-                          </Text>
+                          <View style={styles.notificationActionContainer}>
+                            <Text style={styles.notificationActionText}>{item.action}</Text>
+                            {item.count && (
+                              <View style={styles.notificationCountBadge}>
+                                <Text style={styles.notificationCountText}>{item.count}</Text>
+                              </View>
+                            )}
+                          </View>
                         </View>
-                        {unreadNotifications.has(item.id) && (
-                          <View style={styles.unreadIndicator} />
-                        )}
+                        <View style={styles.notificationArrow}>
+                          <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
+                        </View>
                       </TouchableOpacity>
                     )}
                     showsVerticalScrollIndicator={false}
@@ -3284,6 +3471,126 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                 activeOpacity={0.8}
               >
                 <Text style={styles.notificationOkButtonText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Professional Reminder Modal */}
+        <Modal
+          visible={reminderModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setReminderModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.reminderModalContent}>
+              {/* Reminder Header */}
+              <View style={styles.reminderHeader}>
+                <View style={styles.reminderIconContainer}>
+                  <Ionicons name="notifications-circle" size={48} color="#3b82f6" />
+                </View>
+                <Text style={styles.reminderTitle}>
+                  {isLogoutReminder ? '🚪 LOGOUT REMINDER' : '📋 PROFESSIONAL REMINDER'}
+                </Text>
+                <Text style={styles.reminderSubtitle}>
+                  {isLogoutReminder ? 'Final Workflow Check Before Logout' : 'Embroidery Tech Workflow Management'}
+                </Text>
+              </View>
+
+              {/* Reminder Content */}
+              <ScrollView 
+                style={styles.reminderScrollView}
+                showsVerticalScrollIndicator={true}
+                contentContainerStyle={styles.reminderScrollContent}
+                bounces={true}
+              >
+                <Text style={styles.reminderMessage}>
+                  Dear Technician,
+                </Text>
+                
+                <Text style={styles.reminderMessage}>
+                  This is a <Text style={styles.highlightText}>friendly professional reminder</Text> to ensure optimal workflow management and data integrity:
+                </Text>
+
+                <View style={styles.reminderSection}>
+                  <Text style={styles.reminderSectionTitle}>📢 ADMIN NOTIFICATION REQUIREMENTS:</Text>
+                  <View style={styles.reminderItem}>
+                    <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+                    <Text style={styles.reminderText}>Notify Admin about <Text style={styles.highlightText}>Screens Good for Production</Text></Text>
+                  </View>
+                  <View style={styles.reminderItem}>
+                    <Ionicons name="construct" size={20} color="#f59e0b" />
+                    <Text style={styles.reminderText}>Notify Admin about <Text style={styles.highlightText}>Screens Needing Repair</Text></Text>
+                  </View>
+                  <View style={styles.reminderItem}>
+                    <Ionicons name="close-circle" size={20} color="#ef4444" />
+                    <Text style={styles.reminderText}>Notify Admin about <Text style={styles.highlightText}>Screens to be Written Off</Text></Text>
+                  </View>
+                </View>
+
+                <View style={styles.reminderSection}>
+                  <Text style={styles.reminderSectionTitle}>📊 REPORT GENERATION ESSENTIALS:</Text>
+                  <View style={styles.reminderItem}>
+                    <Ionicons name="calendar" size={20} color="#3b82f6" />
+                    <Text style={styles.reminderText}>Generate <Text style={styles.highlightText}>Daily Reports</Text> for daily work summary</Text>
+                  </View>
+                  <View style={styles.reminderItem}>
+                    <Ionicons name="calendar-outline" size={20} color="#8b5cf6" />
+                    <Text style={styles.reminderText}>Generate <Text style={styles.highlightText}>Weekly Reports</Text> for comprehensive analysis</Text>
+                  </View>
+                </View>
+
+                <View style={styles.reminderSection}>
+                  <Text style={styles.reminderSectionTitle}>⚠️ DATABASE MAINTENANCE ALERT:</Text>
+                  <View style={styles.reminderItem}>
+                    <Ionicons name="warning" size={20} color="#f59e0b" />
+                    <Text style={styles.reminderText}>Admin and Monitors <Text style={styles.highlightText}>clean the database every 7 days</Text></Text>
+                  </View>
+                  <View style={styles.reminderItem}>
+                    <Ionicons name="shield-checkmark" size={20} color="#10b981" />
+                    <Text style={styles.reminderText}>This prevents database <Text style={styles.highlightText}>congestion and exhaustion</Text></Text>
+                  </View>
+                </View>
+
+                <View style={styles.reminderSection}>
+                  <Text style={styles.reminderSectionTitle}>💾 DATA PROTECTION RECOMMENDATIONS:</Text>
+                  <View style={styles.reminderItem}>
+                    <Ionicons name="download" size={20} color="#06b6d4" />
+                    <Text style={styles.reminderText}><Text style={styles.highlightText}>Generate and download</Text> your reports regularly</Text>
+                  </View>
+                  <View style={styles.reminderItem}>
+                    <Ionicons name="save" size={20} color="#8b5cf6" />
+                    <Text style={styles.reminderText}><Text style={styles.highlightText}>Store reports securely</Text> to avoid work loss</Text>
+                  </View>
+                  <View style={styles.reminderItem}>
+                    <Ionicons name="document-text" size={20} color="#10b981" />
+                    <Text style={styles.reminderText}>This ensures <Text style={styles.highlightText}>proof of your work</Text> and prevents confusion</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.reminderMessage}>
+                  <Text style={styles.highlightText}>Thank you for your attention to these important workflow requirements.</Text> Your diligence ensures smooth operations and data integrity.
+                </Text>
+
+                <Text style={styles.reminderMessage}>
+                  {isLogoutReminder 
+                    ? 'Please ensure you have completed all necessary tasks before logging out. Thank you for your attention to these important workflow requirements.'
+                    : 'This reminder will appear every 30 minutes to keep you informed and compliant with our professional standards.'
+                  }
+                </Text>
+              </ScrollView>
+
+              {/* Acknowledge Button */}
+              <TouchableOpacity 
+                style={styles.reminderAcknowledgeButton}
+                onPress={isLogoutReminder ? handleLogoutConfirm : () => setReminderModalVisible(false)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="checkmark-circle" size={24} color="#fff" />
+                <Text style={styles.reminderAcknowledgeButtonText}>
+                  {isLogoutReminder ? 'I UNDERSTAND & LOGOUT' : 'I UNDERSTAND & ACKNOWLEDGE'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -4138,42 +4445,14 @@ reportModalMessage: {
     shadowRadius: 4,
     elevation: 1,
   },
-  scanStatusIndicator: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  scanDetails: {
-    flex: 1,
-  },
+ 
   scanHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 4,
   },
-  scanBarcode: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#212121',
-    marginRight: 10,
-  },
-  scanStatusBadge: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-  },
-  scanStatusText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  scanTime: {
-    fontSize: 13,
-    color: '#757575',
-    marginBottom: 4,
-  },
+ 
+ 
   scanMeta: {
     flexDirection: 'row',
     marginTop: 4,
@@ -4206,30 +4485,13 @@ reportModalMessage: {
     fontWeight: '500',
     marginLeft: 5,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 28,
-    width: '100%',
-    maxWidth: 450,
-  },
+ 
+ 
   modalHeader: {
     alignItems: 'center',
     marginBottom: 15,
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#212121',
-    marginTop: 10,
-  },
+ 
   modalSubtitle: {
     fontSize: 14,
     color: '#616161',
@@ -4262,13 +4524,7 @@ reportModalMessage: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  modalButton: {
-    flex: 1,
-    borderRadius: 8,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginHorizontal: 2,
-  },
+  
   cancelButton: {
     backgroundColor: '#e0e0e0',
   },
@@ -4453,12 +4709,7 @@ reportModalMessage: {
     borderRadius: 20,
     backgroundColor: '#f1f5f9',
   },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
+ 
   defectiveOptions: {
     marginTop: 20,
   },
@@ -4952,6 +5203,17 @@ reportModalMessage: {
     fontWeight: '600',
     color: '#1e293b',
   },
+  markAsReadButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#10b981',
+  },
+  markAsReadIcon: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
   notificationHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -5113,5 +5375,143 @@ reportModalMessage: {
     color: '#ffffff',
     fontSize: 10,
     fontWeight: '600',
+  },
+  // Reminder Modal Styles
+  reminderModalContent: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#fff',
+    padding: 20,
+    elevation: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+  },
+  reminderHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingTop: 20,
+  },
+  reminderIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#dbeafe',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  reminderTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 5,
+  },
+  reminderSubtitle: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  reminderScrollView: {
+    flex: 1,
+    marginBottom: 20,
+  },
+  reminderScrollContent: {
+    paddingBottom: 10,
+    alignItems: 'center',
+  },
+  reminderMessage: {
+    fontSize: 16,
+    color: '#475569',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 15,
+    paddingHorizontal: 5,
+  },
+  reminderSection: {
+    marginVertical: 15,
+    width: '100%',
+  },
+  reminderSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  reminderItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    paddingHorizontal: 10,
+  },
+  reminderText: {
+    fontSize: 15,
+    color: '#475569',
+    marginLeft: 10,
+    flexShrink: 1,
+    lineHeight: 20,
+  },
+  reminderAcknowledgeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3b82f6',
+    borderRadius: 12,
+    paddingVertical: 15,
+    paddingHorizontal: 25,
+    marginBottom: 20,
+    shadowColor: '#3b82f6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  reminderAcknowledgeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 10,
+  },
+  // New notification styles
+  highPriorityNotificationItem: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#ef4444',
+  },
+  mediumPriorityNotificationItem: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#f59e0b',
+  },
+  notificationActionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  notificationActionText: {
+    fontSize: 12,
+    color: '#6366f1',
+    fontWeight: '600',
+  },
+  notificationCountBadge: {
+    backgroundColor: '#6366f1',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    minWidth: 20,
+    alignItems: 'center',
+  },
+  notificationCountText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  notificationArrow: {
+    marginLeft: 8,
+  },
+  highlightText: {
+    fontWeight: '700',
+    color: '#3b82f6',
   },
 });
