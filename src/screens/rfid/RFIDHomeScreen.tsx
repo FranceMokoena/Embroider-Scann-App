@@ -575,7 +575,13 @@ export default function RFIDHomeScreen({ navigation }: any) {
             <TouchableOpacity
               key={card.label}
               style={[styles.summaryCard, { backgroundColor: card.bg, borderColor: card.color }]}
-              onPress={() => navigation.navigate('RfidSearchAsset', { statusFilter: card.label })}
+              onPress={() => {
+                // Navigate to dedicated ERP screens per card status
+                if (card.label === 'Healthy') return navigation.navigate('HealthyAssetsScreen');
+                if (card.label === 'Repairable') return navigation.navigate('RepairableAssetsScreen');
+                if (card.label === 'Beyond Repair') return navigation.navigate('BeyondRepairAssetsScreen');
+                return navigation.navigate('RfidSearchAsset');
+              }}
               activeOpacity={0.85}
             >
               <Text style={[styles.summaryValue, { color: card.color }]}>{card.value}</Text>
