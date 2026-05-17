@@ -1,0 +1,8 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "name": "chainway-rfid",
+    "path": "android",
+    "modules": ["com.embroiderytech.chainwayrfid.ChainwayRfidModule"]
+  }
+}

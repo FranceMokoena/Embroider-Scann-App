@@ -52,6 +52,7 @@ export default function HomeScreen({ navigation, route }: any) {
   const [statusModalVisible, setStatusModalVisible] = useState(false);
   const [manualBarcode, setManualBarcode] = useState('');
   const [manualInputVisible, setManualInputVisible] = useState(false);
+  const [rfidModalVisible, setRfidModalVisible] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [operations, setOperations] = useState<any[]>([]);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -304,8 +305,8 @@ const [isLogoutReminder, setIsLogoutReminder] = useState(false);
         id: 'healthy-screens',
         sender: 'System Manager',
         avatar: '👨‍💼',
-        title: 'Production Ready Screens',
-        message: `Hello! I noticed you have ${healthy} healthy screen(s) that are ready for production. Please remember to notify the admin about these screens so they can be moved to the production queue.`,
+        title: 'Production Ready Items',
+        message: `Hello! I noticed you have ${healthy} healthy item(s) that are ready for production. Please remember to notify the admin about these items so they can be moved to the production queue.`,
         timestamp: new Date(),
         priority: 'high',
         isRead: false,
@@ -321,8 +322,8 @@ const [isLogoutReminder, setIsLogoutReminder] = useState(false);
         id: 'reparable-screens',
         sender: 'Quality Control',
         avatar: '🔧',
-        title: 'Screens Requiring Repair',
-        message: `Hi there! We've identified ${reparable} screen(s) that need repair work. Please notify the admin about these screens so they can be sent to the repair department.`,
+        title: 'Items Requiring Repair',
+        message: `Hi there! We've identified ${reparable} item(s) that need repair work. Please notify the admin about these items so they can be sent to the repair department.`,
         timestamp: new Date(),
         priority: 'medium',
         isRead: false,
@@ -338,8 +339,8 @@ const [isLogoutReminder, setIsLogoutReminder] = useState(false);
         id: 'beyond-repair-screens',
         sender: 'Technical Assessment',
         avatar: '⚠️',
-        title: 'Screens Beyond Repair',
-        message: `Important notice: ${beyondRepair} screen(s) have been marked as beyond repair. These need to be written off. Please notify the admin immediately for proper disposal procedures.`,
+        title: 'Items Beyond Repair',
+        message: `Important notice: ${beyondRepair} item(s) have been marked as beyond repair. These need to be written off. Please notify the admin immediately for proper disposal procedures.`,
         timestamp: new Date(),
         priority: 'high',
         isRead: false,
@@ -356,7 +357,7 @@ const [isLogoutReminder, setIsLogoutReminder] = useState(false);
         sender: 'Performance Tracker',
         avatar: '📊',
         title: 'Daily Progress Update',
-        message: `Great work today! You've successfully scanned ${screensScanned} screen(s). Keep up the excellent performance!`,
+        message: `Great work today! You've successfully scanned ${screensScanned} item(s). Keep up the excellent performance!`,
         timestamp: new Date(),
         priority: 'low',
         isRead: false,
@@ -390,7 +391,7 @@ const [isLogoutReminder, setIsLogoutReminder] = useState(false);
         sender: 'Report System',
         avatar: '📋',
         title: 'Report Generation Reminder',
-        message: `You have ${screensScanned} scans completed. Consider generating a daily report to document your work and maintain records.`,
+        message: `You have ${screensScanned} items processed. Consider generating a daily report to document your work and maintain records.`,
         timestamp: new Date(),
         priority: 'medium',
         isRead: false,
@@ -496,7 +497,7 @@ const [isLogoutReminder, setIsLogoutReminder] = useState(false);
     sessionId?: string | null;
   }): Promise<boolean> => {
     // Show success toast immediately without backend validation
-    Toast.show({ type: 'success', text1: 'SCREEN SENT', text2: 'THE ADMIN WILL BE NOTIFIED' });
+    Toast.show({ type: 'success', text1: 'ITEM SENT', text2: 'THE ADMIN WILL BE NOTIFIED' });
     return true;
   };
 
@@ -892,7 +893,7 @@ const isSameMonth = (date1: Date, date2: Date) => {
       <html>
       <head>
         <meta charset="utf-8">
-        <title>Scan Report - ${user.username}</title>
+        <title>Item Report - ${user.username}</title>
         <style>
           body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
           .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #6366f1; padding-bottom: 20px; }
@@ -930,7 +931,7 @@ const isSameMonth = (date1: Date, date2: Date) => {
             </div>
             <div class="summary-item">
               <div class="summary-number">${scanHistory.totalScans || 0}</div>
-              <div class="summary-label">Total Scans</div>
+              <div class="summary-label">Total Items</div>
             </div>
             <div class="summary-item">
               <div class="summary-number">${scanHistory.totalReparable || 0}</div>
@@ -952,8 +953,8 @@ const isSameMonth = (date1: Date, date2: Date) => {
         </div>
         
         <div class="sessions-section">
-          <h2 style="color: #333; margin-bottom: 20px;">Detailed Scan History</h2>
-          ${sessionsHTML || '<div class="no-data">No scan data available</div>'}
+          <h2 style="color: #333; margin-bottom: 20px;">Detailed Item History</h2>
+          ${sessionsHTML || '<div class="no-data">No item data available</div>'}
         </div>
         
         <div class="footer">
@@ -1063,7 +1064,7 @@ const isSameMonth = (date1: Date, date2: Date) => {
           <div class="summary-grid">
             <div class="summary-item">
               <div class="summary-number">${reportsData?.totalScans || 0}</div>
-              <div class="summary-label">Total Scans</div>
+              <div class="summary-label">Total Items</div>
             </div>
             <div class="summary-item">
               <div class="summary-number">${reportsData?.reparable || 0}</div>
@@ -1079,7 +1080,7 @@ const isSameMonth = (date1: Date, date2: Date) => {
             </div>
           </div>
         </div>
-        <h2 style="color: #333; margin-bottom: 20px;">Scans</h2>
+        <h2 style="color: #333; margin-bottom: 20px;">Items</h2>
         <table>
           <thead>
             <tr>
@@ -1090,7 +1091,7 @@ const isSameMonth = (date1: Date, date2: Date) => {
             </tr>
           </thead>
           <tbody>
-            ${scansRows || '<tr><td colspan="4" class="no-data">No scans for this day</td></tr>'}
+            ${scansRows || '<tr><td colspan="4" class="no-data">No items for this day</td></tr>'}
           </tbody>
         </table>
         <div class="footer">
@@ -1244,7 +1245,7 @@ const isSameMonth = (date1: Date, date2: Date) => {
           <div class="summary-grid">
             <div class="summary-item">
               <div class="summary-number">${scans.length}</div>
-              <div class="summary-label">Total Scans</div>
+              <div class="summary-label">Total Items</div>
             </div>
             <div class="summary-item">
               <div class="summary-number">${scans.filter(s => s.status === 'Reparable').length}</div>
@@ -1260,7 +1261,7 @@ const isSameMonth = (date1: Date, date2: Date) => {
             </div>
           </div>
         </div>
-        <h2 style="color: #333; margin-bottom: 20px;">Scans</h2>
+        <h2 style="color: #333; margin-bottom: 20px;">Items</h2>
         <table>
           <thead>
             <tr>
@@ -1271,7 +1272,7 @@ const isSameMonth = (date1: Date, date2: Date) => {
             </tr>
           </thead>
           <tbody>
-            ${scansRows || '<tr><td colspan="4">No scans for this month</td></tr>'}
+            ${scansRows || '<tr><td colspan="4">No items for this month</td></tr>'}
           </tbody>
         </table>
         <div class="footer">
@@ -1371,7 +1372,7 @@ const generateWeeklyReportHTML = () => {
         <div class="summary-grid">
           <div class="summary-item">
             <div class="summary-number">${scans.length}</div>
-            <div class="summary-label">Total Scans</div>
+            <div class="summary-label">Total Items</div>
           </div>
           <div class="summary-item">
             <div class="summary-number">${scans.filter(s => s.status === 'Reparable').length}</div>
@@ -1387,7 +1388,7 @@ const generateWeeklyReportHTML = () => {
           </div>
         </div>
       </div>
-      <h2 style="color: #333; margin-bottom: 20px;">Scans</h2>
+      <h2 style="color: #333; margin-bottom: 20px;">Items</h2>
       <table>
         <thead>
           <tr>
@@ -1398,7 +1399,7 @@ const generateWeeklyReportHTML = () => {
           </tr>
         </thead>
         <tbody>
-          ${scansRows || '<tr><td colspan="4">No scans for this week</td></tr>'}
+          ${scansRows || '<tr><td colspan="4">No items for this week</td></tr>'}
         </tbody>
       </table>
       <div class="footer">
@@ -1527,6 +1528,33 @@ const handleGenerateWeeklyReport = async () => {
     });
   };
 
+  const handleRfidOptionPress = (option: string) => {
+    setRfidModalVisible(false);
+
+    if (option === 'Add Asset') {
+      navigation.navigate('RfidAddAsset');
+      return;
+    }
+
+    if (option === 'Assign Tags') {
+      navigation.navigate('RfidAssignTag');
+      return;
+    }
+
+    if (option === 'Verify Asset') {
+      navigation.navigate('RfidVerifyAsset');
+      return;
+    }
+
+    if (option === 'Search Asset') {
+      navigation.navigate('RfidSearchAsset');
+      return;
+    }
+
+    console.log(`RFID option selected: ${option}`);
+    Alert.alert('Coming Soon', `${option} will be available in a future update.`);
+  };
+
   const handleManualBarcode = () => {
     if (!currentSessionId) {
       Alert.alert('Error', 'Please start a task session first');
@@ -1570,8 +1598,8 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
     // Add notification for scan
     await addNotification(
       'scan',
-      'Screen Scanned',
-      `Screen ${scannedBarcode} marked as ${status}`,
+      'Item Scanned',
+      `Item ${scannedBarcode} marked as ${status}`,
       scannedBarcode
     );
 
@@ -1581,20 +1609,13 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
     setSavingStatus(null);
     setSavedStatus(status);
 
-    // after short delay: close modal, reset state, open camera
+    // after short delay: close status modal, reset state, reopen RFID entry
     setTimeout(() => {
       setStatusModalVisible(false);
       setSavedStatus(null);
       setSavingStatus(null);
       setScannedBarcode(null);
-
-      // navigate straight to camera for next scan
-      navigation.navigate('CameraScanner', {
-        onScan: (scannedData: string) => {
-          setScannedBarcode(scannedData);
-          setStatusModalVisible(true);
-        }
-      });
+      setManualInputVisible(true);
     }, 900);
   } catch (err) {
     setSavingStatus(null);
@@ -1602,7 +1623,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
     Toast.show({
       type: 'error',
       text1: 'Save Failed',
-      text2: 'Failed to save scan. Please try again.'
+      text2: 'Failed to save item. Please try again.'
     });
   }
 };
@@ -1623,7 +1644,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
         await addNotification(
           'session_end',
           'Session Ended',
-          `Scanning session completed. Total screens: ${screensScanned}`,
+          `Scanning session completed. Total items: ${screensScanned}`,
         );
         setStatusModalVisible(false);
         setManualInputVisible(false);
@@ -1654,7 +1675,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
 
   const handleDeleteScreens = async () => {
     if (selectedScreensForDelete.size === 0) {
-      Alert.alert('No Selection', 'Please select screens to delete.');
+      Alert.alert('No Selection', 'Please select items to delete.');
       return;
     }
 
@@ -1678,7 +1699,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete screens');
+        throw new Error(errorData.error || 'Failed to delete items');
       }
 
       const result = await response.json();
@@ -1692,8 +1713,8 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
       // Add notification for delete operation
       await addNotification(
         'delete',
-        'Screens Deleted',
-        `Successfully deleted ${result.deletedCount} screen(s)`,
+        'Items Deleted',
+        `Successfully deleted ${result.deletedCount} item(s)`,
       );
       
       // Refresh scan history
@@ -1702,11 +1723,11 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
       Toast.show({
         type: 'success',
         text1: 'Success',
-        text2: `Successfully deleted ${result.deletedCount} screen(s)`,
+        text2: `Successfully deleted ${result.deletedCount} item(s)`,
       });
     } catch (error) {
       console.error('Error deleting screens:', error);
-      Alert.alert('Error', `Failed to delete screens: ${error.message}`);
+      Alert.alert('Error', `Failed to delete items: ${error.message}`);
     } finally {
       setIsDeletingScreens(false);
     }
@@ -1813,9 +1834,9 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
           <View style={styles.headerLeft}>
             <View style={styles.logoContainer}>
               <Ionicons name="scan-circle" size={32} color="#6366f1" />
-              <Text style={styles.logoText}>Embroidery-Tech</Text>
+              <Text style={styles.logoText}>Amrod</Text>
             </View>
-            <Text style={styles.subtitle}>The Professional Screen Management</Text>
+            <Text style={styles.subtitle}>The Professional Digital Asset Tracking System</Text>
           </View>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Ionicons name="log-out-outline" size={29} color="#64748b" />
@@ -1902,9 +1923,9 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
             <View style={styles.statContent}>
               
               
-              <Text style={styles.statLabel}>Defective Screens</Text>
+              <Text style={styles.statLabel}>Defective Items</Text>
               <Text style={styles.statNumber}>{reparable + beyondRepair}</Text>
-              <Text style={styles.statTrend}>Click to view Screens</Text>
+              <Text style={styles.statTrend}>Click to view Items</Text>
             </View>
           </TouchableOpacity>
           
@@ -1918,9 +1939,9 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
             </View>
             <View style={styles.statContent}>
               
-              <Text style={styles.statLabel}>HEALTHY Screens</Text>
+              <Text style={styles.statLabel}>Healthy Items</Text>
               <Text style={styles.statNumber}>{healthy}</Text>
-              <Text style={styles.statTrend}>Click to view Screens</Text>
+              <Text style={styles.statTrend}>Click to view Items</Text>
             </View>
           </TouchableOpacity>
           
@@ -1935,7 +1956,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
               <Ionicons name="scan-outline" size={28} color="#6366f1" />
             </View>
             <View style={styles.statContent}>
-              <Text style={styles.statLabel}>Total Screens</Text>
+              <Text style={styles.statLabel}>Total Items</Text>
               <Text style={styles.statNumber}>{screensScanned}</Text>
               <Text style={styles.statTrend}>Click to manage</Text>
             </View>
@@ -1986,20 +2007,26 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
           </TouchableOpacity>
         ) : (
           <>
+
+
+
+
+          {/* TWO OPTIONS, CAMERA AND MANUAL ENTRY STARTS HERE */}
             <View style={styles.scannerSection}>
               <Text style={styles.sectionTitle}>Scanning Operations</Text>
               <Text style={styles.sectionSubtitle}>Choose your preferred scanning method</Text>
               
               <View style={styles.scannerButtons}>
                 <TouchableOpacity 
-                  style={[styles.scannerButton, styles.cameraButton]}
-                  onPress={handleScanScreen}
+                  style={[styles.scannerButton, styles.assetRfidButton]}
+                  onPress={() => setRfidModalVisible(true)}
+                  activeOpacity={0.85}
                 >
                   <View style={styles.scannerButtonIcon}>
-                    <Ionicons name="camera-outline" size={28} color="#fff" />
+                    <Ionicons name="hardware-chip-outline" size={28} color="#fff" />
                   </View>
-                  <Text style={styles.scannerButtonText}>Camera Scan</Text>
-                  <Text style={styles.scannerButtonSubtext}>Use device camera</Text>
+                  <Text style={styles.scannerButtonText}>ASSET / RFID TAGS</Text>
+                  <Text style={styles.scannerButtonSubtext}>Manage asset and tag workflows</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity 
@@ -2007,13 +2034,23 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                   onPress={() => setManualInputVisible(true)}
                 >
                   <View style={styles.scannerButtonIcon}>
-                    <Ionicons name="keypad-outline" size={28} color="#fff" />
+                    <Ionicons name="radio-outline" size={28} color="#fff" />
                   </View>
-                  <Text style={styles.scannerButtonText}>Manual Entry</Text>
-                  <Text style={styles.scannerButtonSubtext}>Type barcode manually</Text>
+                  <Text style={styles.scannerButtonText}>Device RFID</Text>
+                  <Text style={styles.scannerButtonSubtext}>Device RFID reader</Text>
                 </TouchableOpacity>
               </View>
             </View>
+
+          {/* TWO OPTIONS, CAMERA AND MANUAL ENTRY ENDS  HERE */}
+
+
+
+
+
+
+
+
             
             <TouchableOpacity 
               style={[
@@ -2183,7 +2220,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
 {/* Reports Analysis Section */}
 <View style={styles.reportsSection}>
   <Text style={styles.sectionTitle}>Reports Analysis</Text>
-  <Text style={styles.sectionSubtitle}>View analyzed scan statistics</Text>
+  <Text style={styles.sectionSubtitle}>View analyzed item statistics</Text>
   
   <View style={styles.reportsToggle}>
     <TouchableOpacity 
@@ -2246,7 +2283,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
       <View style={styles.reportsStatsContainer}>
         <View style={styles.reportStatCard}>
           <Text style={styles.reportStatNumber}>{reportsData.totalScans || 0}</Text>
-          <Text style={styles.reportStatLabel}>Total Scans</Text>
+          <Text style={styles.reportStatLabel}>Total Items</Text>
         </View>
         
         <View style={styles.reportStatCard}>
@@ -2267,7 +2304,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
       
       {/* Show filtered scans */}
       <Text style={styles.scanListTitle}>
-        {reportsView.charAt(0).toUpperCase() + reportsView.slice(1)} {reportsFilter === 'all' ? 'Scans' : reportsFilter.charAt(0).toUpperCase() + reportsFilter.slice(1) + ' Screens'}
+        {reportsView.charAt(0).toUpperCase() + reportsView.slice(1)} {reportsFilter === 'all' ? 'Items' : reportsFilter.charAt(0).toUpperCase() + reportsFilter.slice(1) + ' Items'}
       </Text>
       
       {reportsData.scans.length > 0 ? (
@@ -2335,8 +2372,8 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
           <Ionicons name="document-text-outline" size={32} color="#cbd5e1" />
           <Text style={styles.emptyScansText}>
             {reportsFilter === 'all' 
-              ? `No scans found for this ${reportsView} period` 
-              : `No ${reportsFilter} screens found for this ${reportsView} period`
+              ? `No items found for this ${reportsView} period` 
+              : `No ${reportsFilter} items found for this ${reportsView} period`
             }
           </Text>
         </View>
@@ -2578,7 +2615,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                         <View style={styles.scanMeta}>
                           <View style={styles.scanMetaItem}>
                             <Ionicons name="qr-code-outline" size={14} color="#64748b" />
-                            <Text style={styles.scanMetaText}>Screen ID</Text>
+                            <Text style={styles.scanMetaText}>Item ID</Text>
                           </View>
                           <View style={styles.scanMetaItem}>
                             <Ionicons name="person-outline" size={14} color="#64748b" />
@@ -2644,6 +2681,101 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
         </View>
       </ScrollView>
 
+      <Modal
+        visible={rfidModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRfidModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setRfidModalVisible(false)}>
+          <Pressable style={styles.rfidModalCard} onPress={() => {}}>
+            <View style={styles.rfidModalHeader}>
+              <View style={styles.rfidModalTitleRow}>
+                <View style={styles.rfidModalIconWrap}>
+                  <Ionicons name="hardware-chip-outline" size={28} color="#0f766e" />
+                </View>
+                <View style={styles.rfidModalTextBlock}>
+                  <Text style={styles.rfidModalTitle}>RFID Asset Management</Text>
+                  <Text style={styles.rfidModalDescription}>
+                    Choose a workflow to manage assets and RFID tags.
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.rfidModalCloseButton}
+                onPress={() => setRfidModalVisible(false)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close" size={20} color="#475569" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.rfidOptionsList}>
+              <TouchableOpacity
+                style={styles.rfidOptionCard}
+                onPress={() => handleRfidOptionPress('Add Asset')}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.rfidOptionIconWrap, styles.rfidOptionIconEmerald]}>
+                  <Ionicons name="cube-outline" size={22} color="#047857" />
+                </View>
+                <View style={styles.rfidOptionTextWrap}>
+                  <Text style={styles.rfidOptionTitle}>Add Asset</Text>
+                  <Text style={styles.rfidOptionSubtitle}>Create a new asset record for future tagging.</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.rfidOptionCard}
+                onPress={() => handleRfidOptionPress('Assign Tags')}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.rfidOptionIconWrap, styles.rfidOptionIconTeal]}>
+                  <Ionicons name="pricetag-outline" size={22} color="#0f766e" />
+                </View>
+                <View style={styles.rfidOptionTextWrap}>
+                  <Text style={styles.rfidOptionTitle}>Assign Tags</Text>
+                  <Text style={styles.rfidOptionSubtitle}>Link RFID tags to existing assets.</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.rfidOptionCard}
+                onPress={() => handleRfidOptionPress('Verify Asset')}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.rfidOptionIconWrap, styles.rfidOptionIconBlue]}>
+                  <Ionicons name="shield-checkmark-outline" size={22} color="#1d4ed8" />
+                </View>
+                <View style={styles.rfidOptionTextWrap}>
+                  <Text style={styles.rfidOptionTitle}>Verify Asset</Text>
+                  <Text style={styles.rfidOptionSubtitle}>Confirm the correct tag is associated with an asset.</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.rfidOptionCard}
+                onPress={() => handleRfidOptionPress('Search Asset')}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.rfidOptionIconWrap, styles.rfidOptionIconAmber]}>
+                  <Ionicons name="search-outline" size={22} color="#b45309" />
+                </View>
+                <View style={styles.rfidOptionTextWrap}>
+                  <Text style={styles.rfidOptionTitle}>Search Asset</Text>
+                  <Text style={styles.rfidOptionSubtitle}>Find an asset or tag from the RFID workspace.</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Enhanced Manual Barcode Input Modal */}
       <Modal
         visible={manualInputVisible}
@@ -2655,13 +2787,13 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Ionicons name="keypad-outline" size={32} color="#6366f1" />
-              <Text style={styles.modalTitle}>Manual Barcode Entry</Text>
-              <Text style={styles.modalSubtitle}>Enter the barcode manually or scan it</Text>
+              <Text style={styles.modalTitle}>Device RFID Entry</Text>
+              <Text style={styles.modalSubtitle}>Barcode will appear below here</Text>
             </View>
             
             <TextInput
               style={styles.inputField}
-              placeholder="Enter barcode number"
+              placeholder="Receiving..."
               placeholderTextColor="#94a3b8"
               value={manualBarcode}
               onChangeText={setManualBarcode}
@@ -2691,6 +2823,30 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
       </Modal>
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <Modal
   visible={statusModalVisible}
   transparent
@@ -2702,13 +2858,13 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
       {/* Header */}
       <View style={styles.headerContainer}>
         <Ionicons name="analytics-outline" size={36} color="#4f46e5" />
-        <Text style={styles.headerTitle}>Screen Assessment</Text>
+        <Text style={styles.headerTitle}>Item Assessment</Text>
         <Text style={styles.headerBarcode}>📦 {scannedBarcode}</Text>
       </View>
 
       {/* Instructions */}
       <Text style={styles.instructions}>
-        Please select the correct condition for this screen.
+        Please select the correct condition for this item.
       </Text>
 
       {/* Action Buttons */}
@@ -2792,11 +2948,11 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
             <View style={styles.modalHeader}>
               <Ionicons name="document-text-outline" size={32} color="#6366f1" />
               <Text style={styles.modalTitle}>Generate Report</Text>
-              <Text style={styles.modalSubtitle}>Create and share a PDF report of all your scans</Text>
+              <Text style={styles.modalSubtitle}>Create and share a PDF report of all your items</Text>
             </View>
             
             <Text style={styles.modalDescription}>
-              This will generate a comprehensive PDF report containing all your scan data, including barcodes, status, dates, and times. The report will be shared and you can then send it to the admin email address.
+              This will generate a comprehensive PDF report containing all your item data, including barcodes, status, dates, and times. The report will be shared and you can then send it to the admin email address.
             </Text>
             
             <TextInput
@@ -2850,7 +3006,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
               <Text style={styles.modalSubtitle}>Here is your session summary</Text>
             </View>
             <View style={styles.sessionSummaryRow}>
-              <Text style={styles.sessionSummaryLabel}>Total screens</Text>
+              <Text style={styles.sessionSummaryLabel}>Total items</Text>
               <Text style={styles.sessionSummaryValue}>{screensScanned}</Text>
             </View>
             <View style={styles.sessionSummaryRow}>
@@ -2928,7 +3084,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Defective Screens</Text>
+                <Text style={styles.modalTitle}>Defective Items</Text>
                 <TouchableOpacity 
                   onPress={() => setDefectiveScreensModalVisible(false)}
                   style={styles.closeButton}
@@ -2949,7 +3105,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                     <Ionicons name="construct-outline" size={24} color="#10b981" />
                   </View>
                   <Text style={styles.optionTitle}>Reparable</Text>
-                  <Text style={styles.optionCount}>{reparable} screens</Text>
+                  <Text style={styles.optionCount}>{reparable} items</Text>
                   <Ionicons name="chevron-forward" size={20} color="#64748b" />
                 </TouchableOpacity>
                 
@@ -2964,7 +3120,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                     <Ionicons name="close-circle-outline" size={24} color="#ef4444" />
                   </View>
                   <Text style={styles.optionTitle}>Beyond Repair </Text>
-                  <Text style={styles.optionCount}>{beyondRepair} screens</Text>
+                  <Text style={styles.optionCount}>{beyondRepair} items</Text>
                   <Ionicons name="chevron-forward" size={20} color="#64748b" />
                 </TouchableOpacity>
               </View>
@@ -2982,7 +3138,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
           <View style={styles.modalOverlay}>
             <View style={styles.healthyModalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Non-Defective Screens</Text>
+                <Text style={styles.modalTitle}>Non-Defective Items</Text>
                 <TouchableOpacity 
                   onPress={() => setNonDefectiveScreensModalVisible(false)}
                   style={styles.closeButton}
@@ -2996,7 +3152,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.healthyScreensListContent}
               >
-                <Text style={styles.healthyScreensTitle}>Healthy Screens ({healthy})</Text>
+                <Text style={styles.healthyScreensTitle}>Healthy Items ({healthy})</Text>
                 {scans.filter(scan => scan.status === 'Healthy').map((scan, index) => (
                   <View key={index} style={styles.healthyScreenItem}>
                     <View style={styles.screenInfo}>
@@ -3036,7 +3192,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                   </View>
                 ))}
                 {scans.filter(scan => scan.status === 'Healthy').length === 0 && (
-                  <Text style={styles.noHealthyScreens}>No healthy screens found</Text>
+                  <Text style={styles.noHealthyScreens}>No healthy items found</Text>
                 )}
               </ScrollView>
             </View>
@@ -3053,7 +3209,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
           <View style={styles.modalOverlay}>
             <View style={styles.repairableModalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Repairable Screens</Text>
+                <Text style={styles.modalTitle}>Repairable Items</Text>
                 <TouchableOpacity 
                   onPress={() => setSelectedDefectiveType(null)}
                   style={styles.closeButton}
@@ -3067,7 +3223,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.repairableScreensListContent}
               >
-                <Text style={styles.repairableScreensTitle}>Repairable Screens ({reparable})</Text>
+                <Text style={styles.repairableScreensTitle}>Repairable Items ({reparable})</Text>
                 {scans.filter(scan => scan.status === 'Reparable').map((scan, index) => (
                   <View key={index} style={styles.repairableScreenItem}>
                     <View style={styles.screenInfo}>
@@ -3107,7 +3263,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                   </View>
                 ))}
                 {scans.filter(scan => scan.status === 'Reparable').length === 0 && (
-                  <Text style={styles.noRepairableScreens}>No repairable screens found</Text>
+                  <Text style={styles.noRepairableScreens}>No repairable items found</Text>
                 )}
               </ScrollView>
             </View>
@@ -3124,7 +3280,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
           <View style={styles.modalOverlay}>
             <View style={styles.beyondRepairModalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Beyond Repair Screens</Text>
+                <Text style={styles.modalTitle}>Beyond Repair Items</Text>
                 <TouchableOpacity 
                   onPress={() => setSelectedDefectiveType(null)}
                   style={styles.closeButton}
@@ -3138,7 +3294,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.beyondRepairScreensListContent}
               >
-                <Text style={styles.beyondRepairScreensTitle}>Beyond Repair Screens ({beyondRepair})</Text>
+                <Text style={styles.beyondRepairScreensTitle}>Beyond Repair Items ({beyondRepair})</Text>
                 {scans.filter(scan => scan.status === 'Beyond Repair').map((scan, index) => (
                   <View key={index} style={styles.beyondRepairScreenItem}>
                     <View style={styles.screenInfo}>
@@ -3178,7 +3334,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                   </View>
                 ))}
                 {scans.filter(scan => scan.status === 'Beyond Repair').length === 0 && (
-                  <Text style={styles.noBeyondRepairScreens}>No beyond repair screens found</Text>
+                  <Text style={styles.noBeyondRepairScreens}>No beyond repair items found</Text>
                 )}
               </ScrollView>
             </View>
@@ -3195,7 +3351,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
           <View style={styles.modalOverlay}>
             <View style={styles.deleteModalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Manage Screens</Text>
+                <Text style={styles.modalTitle}>Manage Items</Text>
                 <TouchableOpacity 
                   onPress={() => setDeleteModalVisible(false)}
                   style={styles.closeButton}
@@ -3209,8 +3365,8 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.deleteScreensListContent}
               >
-                <Text style={styles.deleteScreensTitle}>All Screens ({scans.length})</Text>
-                <Text style={styles.deleteScreensSubtitle}>Select screens to delete</Text>
+                <Text style={styles.deleteScreensTitle}>All Items ({scans.length})</Text>
+                <Text style={styles.deleteScreensSubtitle}>Select items to delete</Text>
                 
                 {scans.map((scan, index) => (
                   <TouchableOpacity
@@ -3244,7 +3400,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                 ))}
                 
                 {scans.length === 0 && (
-                  <Text style={styles.noScreensToDelete}>No screens found</Text>
+                  <Text style={styles.noScreensToDelete}>No items found</Text>
                 )}
               </ScrollView>
               
@@ -3294,7 +3450,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
               </View>
               <Text style={styles.confirmDeleteTitle}>Confirm Deletion</Text>
               <Text style={styles.confirmDeleteMessage}>
-                Are you sure you want to delete {selectedScreensForDelete.size} selected screen(s)? This action cannot be undone.
+                Are you sure you want to delete {selectedScreensForDelete.size} selected item(s)? This action cannot be undone.
               </Text>
               
               <View style={styles.confirmDeleteButtons}>
@@ -3365,7 +3521,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                 <View style={styles.dailySummaryGrid}>
                   <View style={styles.dailySummaryItem}>
                     <Text style={styles.dailySummaryNumber}>{screensScanned}</Text>
-                    <Text style={styles.dailySummaryLabel}>Total Scans</Text>
+                    <Text style={styles.dailySummaryLabel}>Total Items</Text>
                   </View>
                   <View style={styles.dailySummaryItem}>
                     <Text style={styles.dailySummaryNumber}>{healthy}</Text>
@@ -3494,7 +3650,7 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                   {isLogoutReminder ? '🚪 LOGOUT REMINDER' : '📋 PROFESSIONAL REMINDER'}
                 </Text>
                 <Text style={styles.reminderSubtitle}>
-                  {isLogoutReminder ? 'Final Workflow Check Before Logout' : 'Embroidery Tech Workflow Management'}
+                  {isLogoutReminder ? 'Final Workflow Check Before Logout' : 'Amrod Workflow Management'}
                 </Text>
               </View>
 
@@ -3517,15 +3673,15 @@ const handleStatusSelect = async (status: 'Reparable' | 'Beyond Repair' | 'Healt
                   <Text style={styles.reminderSectionTitle}>📢 ADMIN NOTIFICATION REQUIREMENTS:</Text>
                   <View style={styles.reminderItem}>
                     <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-                    <Text style={styles.reminderText}>Notify Admin about <Text style={styles.highlightText}>Screens Good for Production</Text></Text>
+                    <Text style={styles.reminderText}>Notify Admin about <Text style={styles.highlightText}>Items Ready for Production</Text></Text>
                   </View>
                   <View style={styles.reminderItem}>
                     <Ionicons name="construct" size={20} color="#f59e0b" />
-                    <Text style={styles.reminderText}>Notify Admin about <Text style={styles.highlightText}>Screens Needing Repair</Text></Text>
+                    <Text style={styles.reminderText}>Notify Admin about <Text style={styles.highlightText}>Items Needing Repair</Text></Text>
                   </View>
                   <View style={styles.reminderItem}>
                     <Ionicons name="close-circle" size={20} color="#ef4444" />
-                    <Text style={styles.reminderText}>Notify Admin about <Text style={styles.highlightText}>Screens to be Written Off</Text></Text>
+                    <Text style={styles.reminderText}>Notify Admin about <Text style={styles.highlightText}>Items to be Written Off</Text></Text>
                   </View>
                 </View>
 
@@ -4323,9 +4479,18 @@ reportModalMessage: {
     borderRadius: 12,
     marginHorizontal: 5,
     backgroundColor: '#e0e0e0',
+    position: 'relative',
   },
   cameraButton: {
     backgroundColor: '#1976d2',
+  },
+  assetRfidButton: {
+    backgroundColor: '#0f766e',
+  },
+  cameraButtonDisabled: {
+    backgroundColor: 'rgba(107, 114, 128, 0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(107, 114, 128, 0.35)',
   },
   manualButton: {
     backgroundColor: '#42a5f5',
@@ -4339,15 +4504,141 @@ reportModalMessage: {
     alignItems: 'center',
     marginBottom: 8,
   },
+  scannerButtonIconDisabled: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
   scannerButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
     marginTop: 8,
   },
+  scannerButtonTextDisabled: {
+    color: 'rgba(255,255,255,0.8)',
+  },
   scannerButtonSubtext: {
     fontSize: 12,
     color: '#b0bec5',
+  },
+  scannerButtonSubtextDisabled: {
+    color: 'rgba(229,231,235,0.9)',
+  },
+  rfidModalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    width: '100%',
+    maxWidth: 420,
+    padding: 22,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  rfidModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+  },
+  rfidModalTitleRow: {
+    flexDirection: 'row',
+    flex: 1,
+    paddingRight: 12,
+  },
+  rfidModalIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#ccfbf1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  rfidModalTextBlock: {
+    flex: 1,
+  },
+  rfidModalTitle: {
+    fontSize: 21,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  rfidModalDescription: {
+    fontSize: 13,
+    color: '#64748b',
+    marginTop: 4,
+    lineHeight: 19,
+  },
+  rfidModalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rfidOptionsList: {
+    gap: 12,
+  },
+  rfidOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  rfidOptionIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  rfidOptionIconEmerald: {
+    backgroundColor: '#dcfce7',
+  },
+  rfidOptionIconTeal: {
+    backgroundColor: '#ccfbf1',
+  },
+  rfidOptionIconBlue: {
+    backgroundColor: '#dbeafe',
+  },
+  rfidOptionIconAmber: {
+    backgroundColor: '#fef3c7',
+  },
+  rfidOptionTextWrap: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  rfidOptionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 2,
+  },
+  rfidOptionSubtitle: {
+    fontSize: 12,
+    color: '#64748b',
+    lineHeight: 18,
+  },
+  disabledBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(75, 85, 99, 0.7)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  disabledBadgeText: {
+    color: '#f9fafb',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   stopSessionButton: {
     flexDirection: 'row',

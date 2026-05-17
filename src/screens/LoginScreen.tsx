@@ -156,7 +156,7 @@ export default function LoginScreen({ navigation }: any) {
   const handleWarningAcknowledge = () => {
     setWarningModalVisible(false);
     AsyncStorage.getItem('token').then(token => {
-      navigation.replace('Home', { token });
+      navigation.replace('RFIDHomeScreen', { token });
     });
   };
 
@@ -398,11 +398,11 @@ export default function LoginScreen({ navigation }: any) {
         <View style={styles.operationsList}>
           <View style={styles.operationItem}>
             <Ionicons name="scan-outline" size={20} color="#dc2626" />
-            <Text style={styles.operationText}>Screen Scanning & Barcode Processing</Text>
+            <Text style={styles.operationText}>Item Scanning & Barcode Processing</Text>
           </View>
           <View style={styles.operationItem}>
             <Ionicons name="analytics-outline" size={20} color="#dc2626" />
-            <Text style={styles.operationText}>Screen Status Assessment (Reparable/Beyond Repair/Healthy)</Text>
+            <Text style={styles.operationText}>Item Status Assessment (Reparable/Beyond Repair/Healthy)</Text>
           </View>
           <View style={styles.operationItem}>
             <Ionicons name="time-outline" size={20} color="#dc2626" />
@@ -414,7 +414,7 @@ export default function LoginScreen({ navigation }: any) {
           </View>
           <View style={styles.operationItem}>
             <Ionicons name="trash-outline" size={20} color="#dc2626" />
-            <Text style={styles.operationText}>Screen Record Deletion Operations</Text>
+            <Text style={styles.operationText}>Item Record Deletion Operations</Text>
           </View>
           <View style={styles.operationItem}>
             <Ionicons name="rocket-outline" size={20} color="#dc2626" />
@@ -435,7 +435,7 @@ export default function LoginScreen({ navigation }: any) {
         </Text>
 
         <Text style={styles.warningMessage}>
-          This monitoring is essential for maintaining operational excellence and ensuring the highest standards of screen management quality.
+          This monitoring is essential for maintaining operational excellence and ensuring the highest standards of item management quality.
         </Text>
       </ScrollView>
 
@@ -466,7 +466,7 @@ export default function LoginScreen({ navigation }: any) {
       </View>
       <Text style={styles.modalTitle}>🔐 Account Access Required</Text>
       <Text style={styles.modalMessage}>
-        To access the Embroidery Tech system, you need valid credentials from your administrator.
+        To access the Amrod system, you need valid credentials from your administrator.
       </Text>
       <Text style={styles.modalMessage}>
         Please contact your IT administrator or system manager to request account credentials.

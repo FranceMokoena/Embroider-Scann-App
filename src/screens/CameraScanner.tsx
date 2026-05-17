@@ -178,7 +178,7 @@ export default function CameraScanner({ navigation, route }) {
               </View>
             </View>
             
-            <Text style={styles.successTitle}>SCREEN CAPTURED</Text>
+            <Text style={styles.successTitle}>ITEM CAPTURED</Text>
             
             <View style={styles.detailsContainer}>
               <View style={styles.detailRow}>

@@ -7,6 +7,8 @@ const dotenv = require('dotenv');
 const authRoutes = require('./routes/auth');
 const sessionsRoutes = require('./routes/sessions');
 const scanRoutes = require('./routes/scan');
+const assetRoutes = require('./routes/assets');
+const rfidRoutes = require('./routes/rfid');
 
 dotenv.config();
 
@@ -53,6 +55,25 @@ app.get('/', (_req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/sessions', sessionsRoutes);
 app.use('/api/scan', scanRoutes);
+app.use('/api/assets', assetRoutes);
+app.use('/api/asset', assetRoutes);
+app.use('/api/rfid', rfidRoutes);
+
+app.use('/api', (req, res) => {
+  return res.status(404).json({
+    success: false,
+    error: `API route not found: ${req.method} ${req.originalUrl}`,
+  });
+});
+
+app.use((error, _req, res, _next) => {
+  console.error('Unhandled API error:', error);
+
+  return res.status(error.statusCode || 500).json({
+    success: false,
+    error: error.message || 'Internal server error',
+  });
+});
 
 // Connect to MongoDB and start the server
 mongoose.connect(MONGO_URI)

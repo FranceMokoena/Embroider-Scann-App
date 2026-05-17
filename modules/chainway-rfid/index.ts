@@ -1,0 +1,2 @@
+export const CHAINWAY_RFID_NATIVE_MODULE_NAME = 'ChainwayRfid';
+export const CHAINWAY_RFID_NATIVE_MODULE_VERSION = '3.2.0';

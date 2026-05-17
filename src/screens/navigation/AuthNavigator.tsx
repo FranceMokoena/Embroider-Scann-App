@@ -7,13 +7,18 @@ import LoginScreen from '../LoginScreen';
 
 import HomeScreen from './HomeScreen';
 import CameraScanner from '../CameraScanner';
+import AddAsset from '../rfid/AddAsset';
+import AssignTag from '../rfid/AssignTag';
+import VerifyAsset from '../rfid/VerifyAsset';
+import SearchAsset from '../rfid/SearchAsset';
+import RFIDHomeScreen from '../rfid/RFIDHomeScreen';
 
 const Stack = createNativeStackNavigator();
 
 export default function AuthNavigator() {
   return (
     <Stack.Navigator 
-      id="AuthStack"
+      id={undefined}
       initialRouteName="Login" 
       screenOptions={{ headerShown: false }}
     >
@@ -21,6 +26,11 @@ export default function AuthNavigator() {
       
       <Stack.Screen name="Home" component={HomeScreen} />
       <Stack.Screen name="CameraScanner" component={CameraScanner} />
+      <Stack.Screen name="RFIDHomeScreen" component={RFIDHomeScreen} />
+      <Stack.Screen name="RfidAddAsset" component={AddAsset} />
+      <Stack.Screen name="RfidAssignTag" component={AssignTag} />
+      <Stack.Screen name="RfidVerifyAsset" component={VerifyAsset} />
+      <Stack.Screen name="RfidSearchAsset" component={SearchAsset} />
     </Stack.Navigator>
   );
 }
