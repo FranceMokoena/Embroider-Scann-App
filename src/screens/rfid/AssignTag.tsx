@@ -229,6 +229,17 @@ const [statusOpen, setStatusOpen] = useState(false);
     <Text style={styles.summaryValue}>
       {isScanning ? 'LIVE' : 'IDLE'}
     </Text>
+    <Text style={{ fontSize: 20, fontWeight: '800', color: '#0f172a' }}>
+      {epcList.length}
+    </Text>
+
+    <Text style={{ fontSize: 12, color: '#64748b', fontWeight: '600' }}>
+      Tags Scanned
+    </Text>
+
+
+
+
 
   </View>
 
@@ -239,13 +250,7 @@ const [statusOpen, setStatusOpen] = useState(false);
 
 {/* NEW: TOTAL TAG COUNT */}
   <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-    <Text style={{ fontSize: 20, fontWeight: '800', color: '#0f172a' }}>
-      {epcList.length}
-    </Text>
-
-    <Text style={{ fontSize: 12, color: '#64748b', fontWeight: '600' }}>
-      Tags Scanned
-    </Text>
+    
   </View>
 
 

@@ -1547,7 +1547,7 @@ const handleGenerateWeeklyReport = async () => {
     }
 
     if (option === 'Search Asset') {
-      navigation.navigate('RfidSearchAsset');
+      navigation.navigate('SearchAssetScreen');
       return;
     }
 

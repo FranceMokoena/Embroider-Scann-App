@@ -11,6 +11,9 @@ import AddAsset from '../rfid/AddAsset';
 import AssignTag from '../rfid/AssignTag';
 import VerifyAsset from '../rfid/VerifyAsset';
 import SearchAsset from '../rfid/SearchAsset';
+import SearchAssetScreen from '../rfid/SearchAssetScreen';
+import LocateAssetScreen from '../rfid/LocateAssetScreen';
+import AllAssetsScreen from '../rfid/AllAssetsScreen';
 import RFIDHomeScreen from '../rfid/RFIDHomeScreen';
 import HealthyAssetsScreen from '../rfid/HealthyAssetsScreen';
 import RepairableAssetsScreen from '../rfid/RepairableAssetsScreen';
@@ -34,6 +37,9 @@ export default function AuthNavigator() {
       <Stack.Screen name="RfidAssignTag" component={AssignTag} />
       <Stack.Screen name="RfidVerifyAsset" component={VerifyAsset} />
       <Stack.Screen name="RfidSearchAsset" component={SearchAsset} />
+      <Stack.Screen name="SearchAssetScreen" component={SearchAssetScreen} />
+      <Stack.Screen name="RfidLocateAsset" component={LocateAssetScreen} />
+      <Stack.Screen name="AllAssetsScreen" component={AllAssetsScreen} />
       <Stack.Screen name="HealthyAssetsScreen" component={HealthyAssetsScreen} />
       <Stack.Screen name="RepairableAssetsScreen" component={RepairableAssetsScreen} />
       <Stack.Screen name="BeyondRepairAssetsScreen" component={BeyondRepairAssetsScreen} />

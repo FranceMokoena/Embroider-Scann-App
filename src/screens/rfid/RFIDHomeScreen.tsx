@@ -167,11 +167,11 @@ export default function RFIDHomeScreen({ navigation }: any) {
   },
 
   {
-    title: 'Asset Tracking',
+    title: 'Locate Asset',
     subtitle: 'Locate tagged inventory',
     icon: 'locate-outline',
     iconType: 'Ionicons',
-    route: 'RfidSearchAsset',
+    route: 'RfidLocateAsset',
     
     iconBg: '#e2e8f0',
   },
@@ -181,18 +181,18 @@ export default function RFIDHomeScreen({ navigation }: any) {
     subtitle: 'Search registry records',
     icon: 'search-outline',
     iconType: 'Ionicons',
-    route: 'RfidSearchAsset',
+    route: 'SearchAssetScreen',
     
     iconBg: '#e2e8f0',
     wide: true,
   },
 
   {
-    title: 'Asset Repository',
+    title: 'View All Assets',
     subtitle: 'View institutional assets',
     icon: 'server-outline',
     iconType: 'Ionicons',
-    route: 'RfidViewAssets',
+    route: 'AllAssetsScreen',
     
     iconBg: '#e2e8f0',
     wide: true,
@@ -433,6 +433,35 @@ export default function RFIDHomeScreen({ navigation }: any) {
       return;
     }
 
+    if (label === 'Production') {
+      return navigation.navigate('HealthyAssetsScreen');
+    }
+
+    if (label === 'To Repair') {
+      return navigation.navigate('RepairableAssetsScreen');
+    }
+
+    if (label === 'Written Off') {
+      return navigation.navigate('BeyondRepairAssetsScreen');
+    }
+
+    if (label === 'Locate Asset' || label === 'Location') {
+      return navigation.navigate('RfidLocateAsset');
+    }
+
+    if (label === 'Search Asset') {
+      return navigation.navigate('SearchAssetScreen');
+    }
+
+    if (label === 'View All Assets') {
+      return navigation.navigate('AllAssetsScreen');
+    }
+
+    if (label === 'My Profile') {
+      setIsProfileVisible(true);
+      return;
+    }
+
     Alert.alert('RFID Dashboard', `${label} is a navigation placeholder.`);
   };
 
@@ -617,13 +646,13 @@ export default function RFIDHomeScreen({ navigation }: any) {
                 <Text style={styles.profileRole}>{technician.role}</Text>
               </View>
             </View>
-
+          
             <View style={styles.profileDetailRow}>
-              <Ionicons name="business-outline" size={18} color="#1d4ed8" />
+              <Ionicons name="business-outline" size={18} color={PRIMARY_BLUE} />
               <Text style={styles.profileDetailText}>{technician.department}</Text>
             </View>
             <View style={styles.profileDetailRow}>
-              <Ionicons name="shield-checkmark-outline" size={18} color="#1d4ed8" />
+              <Ionicons name="shield-checkmark-outline" size={18} color={PRIMARY_BLUE} />
               <Text style={styles.profileDetailText}>{technician.role}</Text>
             </View>
           </Pressable>
@@ -654,22 +683,37 @@ export default function RFIDHomeScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
 
-            {['Overview', 'Location', 'Department', 'Audit Logs', 'My Profile'].map(item => (
+            {[
+              // ERP sidebar navigation items for dedicated asset status screens
+              { label: 'Overview', icon: 'layers-outline' },
+              { label: 'Production', icon: 'briefcase-outline' },
+              { label: 'To Repair', icon: 'construct-outline' },
+              { label: 'Written Off', icon: 'close-circle-outline' },
+              { label: 'Locate Asset', icon: 'locate-outline' },
+              { label: 'Search Asset', icon: 'search-outline' },
+              { label: 'View All Assets', icon: 'server-outline' },
+              { label: 'Department', icon: 'business-outline' },
+              { label: 'Audit Logs', icon: 'document-text-outline' },
+              { label: 'My Profile', icon: 'person-circle-outline' },
+            ].map(item => (
               <TouchableOpacity
-                key={item}
+                key={item.label}
                 style={styles.drawerItem}
                 onPress={() => {
-                  if (item === 'My Profile') {
+                  if (item.label === 'My Profile') {
                     setIsDrawerVisible(false);
                     setIsProfileVisible(true);
                     return;
                   }
-                  handleDrawerItemPress(item);
+                  handleDrawerItemPress(item.label);
                 }}
                 activeOpacity={0.85}
               >
-                <Text style={styles.drawerItemText}>{item}</Text>
-                
+                <View style={styles.drawerItemRow}>
+                  <Ionicons name={item.icon as any} size={18} color={PRIMARY_BLUE} />
+                  <Text style={[styles.drawerItemText, { marginLeft: 10 }]}>{item.label}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#64748b" />
               </TouchableOpacity>
             ))}
           </Animated.View>
@@ -1234,6 +1278,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  drawerItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   drawerItemText: {
     fontSize: 15,

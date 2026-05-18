@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
+  Modal,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -28,14 +31,26 @@ export default function VerifyAsset({ navigation }: any) {
   );
 
   const [location, setLocation] = useState('');
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [departmentsLoading, setDepartmentsLoading] = useState(false);
+  const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
+  const [departmentSearch, setDepartmentSearch] = useState('');
   const [epcValue, setEpcValue] = useState('');
   const [lastScanAt, setLastScanAt] = useState<number | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [scannedEpcs, setScannedEpcs] = useState<string[]>([]);
+  const [auditAssets, setAuditAssets] = useState<any[]>([]);
+  const [isAuditLoading, setIsAuditLoading] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [auditResult, setAuditResult] = useState<any>(null);
+  const [verificationModalVisible, setVerificationModalVisible] = useState(false);
+  const [verificationModalType, setVerificationModalType] = useState<'success' | 'failure'>('success');
+  const [verificationModalMessage, setVerificationModalMessage] = useState('');
+  const verificationScale = useRef(new Animated.Value(0)).current;
+  const verificationIconScale = useRef(new Animated.Value(0)).current;
 
   const lastCapturedEpcRef = useRef<string | null>(null);
+  const tagsScrollRef = useRef<ScrollView | null>(null);
 
   const isOwner = controller.isOwner(ownerId);
 
@@ -46,12 +61,48 @@ export default function VerifyAsset({ navigation }: any) {
 
   const auditSummary = auditResult
     ? {
-        expectedAssets: auditResult.expectedCount,
-        foundAssets: auditResult.matchedAssets.length,
-        missingAssets: auditResult.missingAssets.length,
-        unknownAssets: auditResult.unexpectedAssets.length + auditResult.unregisteredTags.length,
+        expectedAssets: auditResult.expectedCount ?? 0,
+        foundAssets: auditResult.matchedAssets?.length ?? 0,
+        missingAssets: auditResult.missingAssets?.length ?? 0,
+        unknownAssets:
+          (auditResult.unexpectedAssets?.length ?? 0) +
+          (auditResult.unregisteredTags?.length ?? 0),
       }
     : null;
+
+  const filteredDepartments = useMemo(() => {
+    const query = departmentSearch.trim().toLowerCase();
+
+    if (!query) {
+      return departments;
+    }
+
+    return departments.filter(department => department.toLowerCase().includes(query));
+  }, [departmentSearch, departments]);
+
+  const loadDepartments = useCallback(async () => {
+    setDepartmentsLoading(true);
+    try {
+      const result = await apiRequest<{ assets: any[] }>('/api/assets', {
+        method: 'GET',
+      });
+      const allDepartments = result.assets
+        .map(asset => asset.department || asset.category || asset.location || '')
+        .filter((value: string) => typeof value === 'string' && value.trim().length > 0);
+      const uniqueDepartments = Array.from(new Set(allDepartments))
+        .map(value => value.trim())
+        .sort((a, b) => a.localeCompare(b));
+      setDepartments(uniqueDepartments);
+    } catch (error) {
+      console.error('Failed to load departments for audit dropdown', error);
+    } finally {
+      setDepartmentsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDepartments();
+  }, [loadDepartments]);
 
   useEffect(() => {
     if (!isOwner && isListening) setIsListening(false);
@@ -104,17 +155,28 @@ export default function VerifyAsset({ navigation }: any) {
     }
   };
 
-  const handleStopCapture = async () => {
-    if (controller.isOwner(ownerId)) {
-      await controller.stopScan(ownerId);
+  const handleAddEpc = () => {
+    const normalized = normalizeEpc(epcValue);
+    if (!normalized) {
+      return;
     }
-    setIsListening(false);
+
+    setScannedEpcs(previous =>
+      previous.includes(normalized) ? previous : [normalized, ...previous],
+    );
+    setEpcValue('');
+    setLastScanAt(Date.now());
+  };
+
+  const handleRemoveEpc = (epc: string) => {
+    setScannedEpcs(previous => previous.filter(item => item !== epc));
   };
 
   const handleClearEpc = async () => {
     setEpcValue('');
     setLastScanAt(null);
     setScannedEpcs([]);
+    setAuditAssets([]);
     setAuditResult(null);
     setIsListening(false);
 
@@ -123,19 +185,184 @@ export default function VerifyAsset({ navigation }: any) {
     }
   };
 
-  const handleVerifyRoom = async () => {
+  const handleSelectDepartment = (department: string) => {
+    setLocation(department);
+    setDepartmentSearch('');
+    setDepartmentDropdownOpen(false);
+  };
+
+  const buildAuditRows = (
+    expectedAssets: any[],
+    lookupResults: Array<{ epc: string; asset: any | null }>,
+    selectedLocation: string,
+  ) => {
+    const expectedByEpc = new Map(expectedAssets.map((asset: any) => [asset.epc, asset]));
+    const scannedByEpc = new Map(
+      lookupResults.filter(result => result.asset).map(result => [result.epc, result.asset]),
+    );
+
+    const uniqueEpcs = Array.from(new Set([normalizeEpc(epcValue), ...scannedEpcs].filter(Boolean)));
+
+    const matchedAssets = uniqueEpcs
+      .filter(epc => expectedByEpc.has(epc))
+      .map(epc => ({
+        ...expectedByEpc.get(epc),
+        auditResult: 'Matched',
+        verificationStatus: 'Pending',
+      }));
+
+    const missingAssets = expectedAssets
+      .filter((asset: any) => !uniqueEpcs.includes(asset.epc))
+      .map((asset: any) => ({
+        ...asset,
+        auditResult: 'Missing',
+        verificationStatus: 'Pending',
+      }));
+
+    const unexpectedAssets = uniqueEpcs
+      .filter(epc => {
+        const asset = scannedByEpc.get(epc);
+        return asset && asset.location !== selectedLocation;
+      })
+      .map(epc => ({
+        ...scannedByEpc.get(epc),
+        auditResult: 'Unexpected',
+        verificationStatus: 'Pending',
+      }));
+
+    const unregisteredTags = uniqueEpcs
+      .filter(epc => !scannedByEpc.has(epc))
+      .map(epc => ({
+        id: `unregistered-${epc}`,
+        assetName: 'Unregistered Tag',
+        assetNumber: '—',
+        epc,
+        department: '—',
+        status: 'Unregistered',
+        serialNumber: '—',
+        location: selectedLocation,
+        auditResult: 'Unregistered',
+        verificationStatus: 'Pending',
+      }));
+
+    return [...matchedAssets, ...unexpectedAssets, ...missingAssets, ...unregisteredTags];
+  };
+
+  const handleStartAudit = async () => {
     const normalizedLocation = location.trim();
-    const epcs = epcValue
-      ? Array.from(new Set([normalizeEpc(epcValue), ...scannedEpcs]))
-      : scannedEpcs;
+    const uniqueEpcs = Array.from(
+      new Set([normalizeEpc(epcValue), ...scannedEpcs].filter(Boolean)),
+    );
 
     if (!normalizedLocation) {
-      Alert.alert('Location Required', 'Enter the room or location before running verification.');
+      Alert.alert(
+        'Location Required',
+        'Select a department or location before starting audit.',
+      );
       return;
     }
 
-    if (epcs.length === 0) {
-      Alert.alert('No Tags Scanned', 'Scan at least one RFID tag before verification.');
+    if (uniqueEpcs.length === 0) {
+      Alert.alert('No Tags Scanned', 'Scan at least one RFID tag before starting audit.');
+      return;
+    }
+
+    try {
+      setIsAuditLoading(true);
+      setAuditResult(null);
+      setAuditAssets([]);
+
+      const assetsResponse = await apiRequest<{ assets: any[] }>(
+        `/api/assets?location=${encodeURIComponent(normalizedLocation)}`,
+        { method: 'GET' },
+      );
+
+      const lookupResults = await Promise.all(
+        uniqueEpcs.map(async epc => {
+          try {
+            const result = await apiRequest<{ asset: any }>(
+              `/api/rfid/lookup/${encodeURIComponent(epc)}`,
+              { method: 'GET' },
+            );
+
+            return { epc, asset: result.asset || null };
+          } catch {
+            return { epc, asset: null };
+          }
+        }),
+      );
+
+      const rows = buildAuditRows(assetsResponse.assets, lookupResults, normalizedLocation);
+      setAuditAssets(rows);
+      setAuditResult({
+        expectedCount: assetsResponse.assets.length,
+        scannedCount: uniqueEpcs.length,
+        uniqueScannedCount: uniqueEpcs.length,
+        matchedAssets: rows.filter(row => row.auditResult === 'Matched'),
+        missingAssets: rows.filter(row => row.auditResult === 'Missing'),
+        unexpectedAssets: rows.filter(row => row.auditResult === 'Unexpected'),
+        unregisteredTags: rows.filter(row => row.auditResult === 'Unregistered'),
+        verificationPercentage: assetsResponse.assets.length === 0
+          ? 0
+          : Math.round((rows.filter(row => row.auditResult === 'Matched').length / assetsResponse.assets.length) * 100),
+      });
+    } catch (error) {
+      Alert.alert(
+        'Audit Failed',
+        error instanceof Error ? error.message : 'Unable to load audit data.',
+      );
+    } finally {
+      setIsAuditLoading(false);
+    }
+  };
+
+  const animateVerification = () => {
+    verificationScale.setValue(0);
+    verificationIconScale.setValue(0);
+
+    Animated.parallel([
+      Animated.spring(verificationScale, {
+        toValue: 1,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+      Animated.sequence([
+        Animated.delay(120),
+        Animated.spring(verificationIconScale, {
+          toValue: 1,
+          friction: 4,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  };
+
+  const openVerificationModal = (type: 'success' | 'failure', message: string) => {
+    setVerificationModalType(type);
+    setVerificationModalMessage(message);
+    setVerificationModalVisible(true);
+    animateVerification();
+  };
+
+  const handleVerifyRoom = async () => {
+    const normalizedLocation = location.trim();
+    const uniqueEpcs = Array.from(
+      new Set([normalizeEpc(epcValue), ...scannedEpcs].filter(Boolean)),
+    );
+
+    if (!normalizedLocation) {
+      openVerificationModal(
+        'failure',
+        'Select a department or location before verification.',
+      );
+      return;
+    }
+
+    if (uniqueEpcs.length === 0) {
+      openVerificationModal(
+        'failure',
+        'Scan at least one RFID tag before verification.',
+      );
       return;
     }
 
@@ -145,17 +372,57 @@ export default function VerifyAsset({ navigation }: any) {
         method: 'POST',
         body: {
           location: normalizedLocation,
-          epcs,
+          epcs: uniqueEpcs,
         },
       });
 
       setAuditResult(result.audit);
+      const matchedAssets = result.audit.matchedAssets || [];
+      const missingAssets = result.audit.missingAssets || [];
+      const unexpectedAssets = result.audit.unexpectedAssets || [];
+      const unregisteredTags = result.audit.unregisteredTags || [];
+      const missingCount = missingAssets.length;
+      const unexpectedCount = unexpectedAssets.length;
+      const unregisteredCount = unregisteredTags.length;
+      const isVerified = missingCount === 0 && unexpectedCount === 0 && unregisteredCount === 0;
+
+      openVerificationModal(
+        isVerified ? 'success' : 'failure',
+        isVerified
+          ? 'The scanned asset list has been verified against the selected department/location.'
+          : 'Verification completed with unresolved room mismatches. Review the audit result table.',
+      );
+
+      const matchedEpcs = new Set(matchedAssets.map((asset: any) => asset.epc));
+      const missingEpcs = new Set(missingAssets.map((asset: any) => asset.epc));
+      const unexpectedEpcs = new Set(unexpectedAssets.map((asset: any) => asset.epc));
+
+      setAuditAssets(previous =>
+        previous.map(asset => {
+          if (!asset.epc) return asset;
+          if (matchedEpcs.has(asset.epc)) {
+            return { ...asset, verificationStatus: 'Verified' };
+          }
+          if (missingEpcs.has(asset.epc)) {
+            return { ...asset, verificationStatus: 'Missing' };
+          }
+          if (unexpectedEpcs.has(asset.epc)) {
+            return { ...asset, verificationStatus: 'Mismatch' };
+          }
+          return asset;
+        }),
+      );
     } catch (error) {
-      Alert.alert('Verification Failed', error instanceof Error ? error.message : 'Unable to verify this room.');
+      openVerificationModal(
+        'failure',
+        error instanceof Error ? error.message : 'Unable to verify this room.',
+      );
     } finally {
       setIsVerifying(false);
     }
   };
+
+  const isVerificationSuccess = verificationModalType === 'success';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -216,15 +483,67 @@ export default function VerifyAsset({ navigation }: any) {
 
         {/* LOCATION */}
         <View style={{ marginTop: 14 }}>
-          <Text style={styles.sectionLabel}>Location</Text>
+          <Text style={styles.sectionLabel}>Department / Location</Text>
 
-          <TextInput
-            style={styles.locationInput}
-            placeholder="Enter audit location"
-            placeholderTextColor="#9ca3af"
-            value={location}
-            onChangeText={setLocation}
-          />
+          <TouchableOpacity
+            style={styles.dropdownButton}
+            onPress={() => setDepartmentDropdownOpen(prev => !prev)}
+            activeOpacity={0.85}
+          >
+            <Text
+              numberOfLines={1}
+              style={styles.dropdownButtonText}
+            >
+              {location || 'Select department or location'}
+            </Text>
+
+            <Ionicons
+              name={departmentDropdownOpen ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color="#374151"
+            />
+          </TouchableOpacity>
+
+          {departmentDropdownOpen && (
+            <View style={styles.dropdownList}>
+              <View style={styles.dropdownSearchRow}>
+                <Ionicons name="search-outline" size={16} color="#64748b" />
+                <TextInput
+                  style={styles.dropdownSearchInput}
+                  placeholder="Search department/location"
+                  placeholderTextColor="#94a3b8"
+                  value={departmentSearch}
+                  onChangeText={setDepartmentSearch}
+                  autoCorrect={false}
+                />
+              </View>
+
+              {departmentsLoading ? (
+                <ActivityIndicator size="small" color={PRIMARY_BLUE} />
+              ) : departments.length === 0 ? (
+                <Text style={styles.dropdownEmptyText}>
+                  No departments available yet.
+                </Text>
+              ) : filteredDepartments.length === 0 ? (
+                <Text style={styles.dropdownEmptyText}>
+                  No matching departments found.
+                </Text>
+              ) : (
+                filteredDepartments.map(department => (
+                  <TouchableOpacity
+                    key={department}
+                    style={styles.dropdownItem}
+                    onPress={() => handleSelectDepartment(department)}
+                    activeOpacity={0.75}
+                  >
+                    <Text numberOfLines={1} style={styles.dropdownItemText}>
+                      {department}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+          )}
         </View>
 
         {/* EPC INPUT */}
@@ -241,51 +560,93 @@ export default function VerifyAsset({ navigation }: any) {
                 setEpcValue(normalizeEpc(value));
                 setLastScanAt(null);
               }}
+              onSubmitEditing={handleAddEpc}
               autoCapitalize="characters"
               autoCorrect={false}
+              returnKeyType="done"
             />
 
+            <TouchableOpacity
+              style={styles.scanButton}
+              onPress={handleStartCapture}
+              activeOpacity={0.85}
+            >
+              <Ionicons
+                name={isListening ? 'radio-outline' : 'scan-outline'}
+                size={18}
+                color="#ffffff"
+              />
 
-           <TouchableOpacity
-  style={styles.scanButton}
-  onPress={handleStartCapture}
-  activeOpacity={0.85}
->
-  <Ionicons
-    name={isListening ? 'radio-outline' : 'scan-outline'}
-    size={18}
-    color="#ffffff"
-  />
-
-  <Text style={styles.scanButtonText}>
-    {isListening ? 'Stop' : 'Scan'}
-  </Text>
-</TouchableOpacity>
+              <Text style={styles.scanButtonText}>
+                {isListening ? 'Stop' : 'Scan'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={handleClearEpc}>
-            <Text style={{ color: PRIMARY_BLUE, marginTop: 10, fontWeight: '600' }}>
-              Clear Tag
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.manualActionsRow}>
+            <TouchableOpacity
+              style={styles.addChipButton}
+              onPress={handleAddEpc}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="add-circle-outline" size={16} color={PRIMARY_BLUE} />
+              <Text style={styles.addChipText}>Add Tag</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={handleClearEpc}>
+              <Text style={styles.clearLinkText}>Clear Scanned Tags</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* TAG DISPLAY */}
         <View style={styles.tagDisplayBox}>
-          <Text style={styles.tagDisplayText}>
-            {epcValue
-              ? epcValue
-              : 'Scan a tag or enter an EPC to start room verification.'}
-          </Text>
+          <View style={styles.tagHeaderRow}>
+            <Text style={styles.tagDisplayTitle}>Scanned EPC Tags</Text>
+            <View style={styles.tagCountBadge}>
+              <Text style={styles.tagCountText}>
+                {scannedEpcs.length} EPC{scannedEpcs.length === 1 ? '' : 's'}
+              </Text>
+            </View>
+          </View>
+
+          {scannedEpcs.length === 0 ? (
+            <Text style={styles.tagDisplayText}>
+              Scan tags or enter an EPC to begin the audit capture panel.
+            </Text>
+          ) : (
+            <ScrollView
+              ref={ref => { tagsScrollRef.current = ref; }}
+              style={styles.tagScrollBox}
+              showsVerticalScrollIndicator
+              nestedScrollEnabled
+              contentContainerStyle={styles.tagChipGrid}
+            >
+              {scannedEpcs.map(epc => (
+                <View key={epc} style={styles.tagChip}>
+                  <Text style={styles.tagChipText} numberOfLines={1} ellipsizeMode="middle">
+                    {epc}
+                  </Text>
+                  <TouchableOpacity onPress={() => handleRemoveEpc(epc)} style={styles.tagRemoveButton}>
+                    <Ionicons name="close-circle" size={16} color="#0f172a" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          )}
         </View>
 
         {/* ACTION BUTTONS */}
         <View style={styles.bottomActionContainer}>
           <TouchableOpacity
             style={styles.startAuditButton}
-            onPress={handleStartCapture}
+            onPress={handleStartAudit}
           >
-            <Text style={styles.startAuditText}>Start Audit</Text>
+            {isAuditLoading ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <Text style={styles.startAuditText}>Start Audit</Text>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -301,67 +662,133 @@ export default function VerifyAsset({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        {auditResult ? (
+        {auditAssets.length > 0 || auditResult ? (
           <View style={styles.auditResultContainer}>
-            <Text style={styles.auditResultTitle}>Verification Summary</Text>
-            <View style={styles.auditOverviewRow}>
-              <View style={styles.auditOverviewCard}>
-                <Text style={styles.auditOverviewValue}>{auditResult.expectedCount}</Text>
-                <Text style={styles.auditOverviewLabel}>Expected</Text>
-              </View>
-              <View style={styles.auditOverviewCard}>
-                <Text style={styles.auditOverviewValue}>{auditResult.uniqueScannedCount}</Text>
-                <Text style={styles.auditOverviewLabel}>Scanned</Text>
-              </View>
-              <View style={styles.auditOverviewCard}>
-                <Text style={styles.auditOverviewValue}>{auditResult.verificationPercentage}%</Text>
-                <Text style={styles.auditOverviewLabel}>Verified</Text>
-              </View>
-            </View>
+            <Text style={styles.auditResultTitle}>Audit Result</Text>
 
-            <View style={styles.auditSummaryRow}>
-              <Text style={styles.auditSummaryText}>Matched assets: {auditResult.matchedAssets.length}</Text>
-              <Text style={styles.auditSummaryText}>Missing assets: {auditResult.missingAssets.length}</Text>
-            </View>
+            {auditResult ? (
+              <View style={styles.auditOverviewRow}>
+                <View style={styles.auditOverviewCard}>
+                  <Text style={styles.auditOverviewValue}>{auditResult.expectedCount}</Text>
+                  <Text style={styles.auditOverviewLabel}>Expected</Text>
+                </View>
+                <View style={styles.auditOverviewCard}>
+                  <Text style={styles.auditOverviewValue}>{auditResult.uniqueScannedCount}</Text>
+                  <Text style={styles.auditOverviewLabel}>Scanned</Text>
+                </View>
+                <View style={styles.auditOverviewCard}>
+                  <Text style={styles.auditOverviewValue}>{auditResult.verificationPercentage}%</Text>
+                  <Text style={styles.auditOverviewLabel}>Verified</Text>
+                </View>
+              </View>
+            ) : null}
 
-            <View style={styles.auditListCard}>
-              <Text style={styles.auditListTitle}>Missing Assets</Text>
-              {auditResult.missingAssets.length > 0 ? (
-                auditResult.missingAssets.map((asset: any) => (
-                  <Text key={asset.id} style={styles.auditListItem}>
-                    {asset.assetName} ({asset.assetNumber})
+            <View style={styles.tableWrap}>
+              {isAuditLoading ? (
+                <ActivityIndicator size="large" color={PRIMARY_BLUE} style={{ marginVertical: 22 }} />
+              ) : auditAssets.length === 0 ? (
+                <View style={styles.emptyStateCard}>
+                  <Text style={styles.emptyStateTitle}>No audit assets loaded</Text>
+                  <Text style={styles.emptyStateDescription}>
+                    Start the audit to display matching assets and captured EPC details.
                   </Text>
-                ))
+                </View>
               ) : (
-                <Text style={styles.auditListEmpty}>No missing assets detected.</Text>
-              )}
-            </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.table}>
+                    <View style={[styles.tableRow, styles.tableHeader]}>
+                      <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Asset Name</Text>
+                      <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Asset Number</Text>
+                      <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>EPC</Text>
+                      <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Department</Text>
+                      <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Status</Text>
+                      <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Serial Number</Text>
+                      <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Created Date</Text>
+                    </View>
 
-            <View style={styles.auditListCard}>
-              <Text style={styles.auditListTitle}>Unexpected Assets</Text>
-              {auditResult.unexpectedAssets.length > 0 ? (
-                auditResult.unexpectedAssets.map((asset: any) => (
-                  <Text key={asset.id} style={styles.auditListItem}>
-                    {asset.assetName} ({asset.assetNumber}) — {asset.location || 'Unknown location'}
-                  </Text>
-                ))
-              ) : (
-                <Text style={styles.auditListEmpty}>No unexpected assets detected.</Text>
-              )}
-            </View>
-
-            <View style={styles.auditListCard}>
-              <Text style={styles.auditListTitle}>Unregistered Tags</Text>
-              {auditResult.unregisteredTags.length > 0 ? (
-                auditResult.unregisteredTags.map((tag: any) => (
-                  <Text key={tag.epc} style={styles.auditListItem}>{tag.epc}</Text>
-                ))
-              ) : (
-                <Text style={styles.auditListEmpty}>All scanned tags are registered.</Text>
+                    {auditAssets.map((asset, index) => (
+                      <View
+                        key={`${asset.epc || asset.assetNumber}-${index}`}
+                        style={[styles.tableRow, index % 2 === 1 && styles.tableRowAlternate]}
+                      >
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.assetName || '—'}</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.assetNumber || '—'}</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.epc || '—'}</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.department || asset.location || '—'}</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.status || '—'}</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.serialNumber || '—'}</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>
+                          {asset.createdAt ? new Date(asset.createdAt).toLocaleDateString() : '—'}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
               )}
             </View>
           </View>
         ) : null}
+
+        <Modal
+          visible={verificationModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setVerificationModalVisible(false)}
+        >
+          <Pressable style={styles.modalOverlay} onPress={() => setVerificationModalVisible(false)}>
+            <Animated.View style={[styles.modalCard, { transform: [{ scale: verificationScale }] }]}> 
+              <Animated.View
+                style={[
+                  styles.modalIconCircle,
+                  isVerificationSuccess
+                    ? styles.modalIconCircleSuccess
+                    : styles.modalIconCircleFailure,
+                  { transform: [{ scale: verificationIconScale }] },
+                ]}
+              >
+                <Ionicons
+                  name={isVerificationSuccess ? 'checkmark' : 'close'}
+                  size={42}
+                  color={isVerificationSuccess ? '#166534' : '#991b1b'}
+                />
+              </Animated.View>
+
+              <Text style={styles.modalTitle}>
+                {isVerificationSuccess ? 'Verification Successful' : 'Verification Failed'}
+              </Text>
+              <Text style={styles.modalText}>{verificationModalMessage}</Text>
+
+              <View style={styles.modalStatRow}>
+                <View style={styles.modalStatItem}>
+                  <Text style={styles.modalStatLabel}>Verified Assets</Text>
+                  <Text style={styles.modalStatValue}>
+                    {isVerificationSuccess ? auditResult?.matchedAssets?.length ?? 0 : 0}
+                  </Text>
+                </View>
+                <View style={styles.modalStatItem}>
+                  <Text style={styles.modalStatLabel}>Department</Text>
+                  <Text style={styles.modalStatValue}>{location || 'N/A'}</Text>
+                </View>
+                <View style={styles.modalStatItem}>
+                  <Text style={styles.modalStatLabel}>Timestamp</Text>
+                  <Text style={styles.modalStatValue}>
+                    {isVerificationSuccess && auditResult?.auditTimestamp
+                      ? new Date(auditResult.auditTimestamp).toLocaleString()
+                      : new Date().toLocaleString()}
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setVerificationModalVisible(false)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.modalCloseText}>Close</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </Pressable>
+        </Modal>
 
       </ScrollView>
     </SafeAreaView>
