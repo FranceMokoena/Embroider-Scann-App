@@ -37,7 +37,7 @@ export default function VerifyAsset({ navigation }: any) {
   const [departmentSearch, setDepartmentSearch] = useState('');
   const [epcValue, setEpcValue] = useState('');
   const [lastScanAt, setLastScanAt] = useState<number | null>(null);
-  const [isListening, setIsListening] = useState(false);
+  const [isEpcCaptureActive, setIsEpcCaptureActive] = useState(false);
   const [scannedEpcs, setScannedEpcs] = useState<string[]>([]);
   const [auditAssets, setAuditAssets] = useState<any[]>([]);
   const [isAuditLoading, setIsAuditLoading] = useState(false);
@@ -105,8 +105,8 @@ export default function VerifyAsset({ navigation }: any) {
   }, [loadDepartments]);
 
   useEffect(() => {
-    if (!isOwner && isListening) setIsListening(false);
-  }, [isListening, isOwner]);
+    if (!isOwner && isEpcCaptureActive) setIsEpcCaptureActive(false);
+  }, [isEpcCaptureActive, isOwner]);
 
   useFocusEffect(
     useCallback(() => {
@@ -119,7 +119,7 @@ export default function VerifyAsset({ navigation }: any) {
   );
 
   useEffect(() => {
-    if (!isListening || !isScanning) return;
+    if (!isEpcCaptureActive || !isScanning) return;
 
     if (!latestEntry || latestEntry.epcRaw === lastCapturedEpcRef.current) return;
 
@@ -130,28 +130,38 @@ export default function VerifyAsset({ navigation }: any) {
       return previous.includes(normalized) ? previous : [normalized, ...previous];
     });
     setLastScanAt(latestEntry.lastSeenAt);
-    setIsListening(false);
+    setIsEpcCaptureActive(false);
     void controller.stopScan(ownerId);
-  }, [controller, isListening, isScanning, latestEntry, ownerId]);
+  }, [controller, isEpcCaptureActive, isScanning, latestEntry, ownerId]);
 
   const handleStartCapture = async () => {
     if (isScanning) {
       await controller.stopScan(ownerId);
-      setIsListening(false);
+      setIsEpcCaptureActive(false);
       return;
     }
 
     try {
-      setIsListening(true);
+      setEpcValue('');
+      setIsEpcCaptureActive(true);
       lastCapturedEpcRef.current = null;
       controller.clear();
       await controller.startScan(ownerId);
     } catch (error) {
-      setIsListening(false);
+      setIsEpcCaptureActive(false);
       Alert.alert(
         'RFID Start Failed',
         error instanceof Error ? error.message : 'Failed to start RFID scanning.',
       );
+    }
+  };
+
+  const handleEpcChange = (value: string) => {
+    const normalizedValue = normalizeEpc(value);
+    setEpcValue(normalizedValue);
+
+    if (normalizedValue.trim()) {
+      setIsEpcCaptureActive(false);
     }
   };
 
@@ -178,7 +188,7 @@ export default function VerifyAsset({ navigation }: any) {
     setScannedEpcs([]);
     setAuditAssets([]);
     setAuditResult(null);
-    setIsListening(false);
+    setIsEpcCaptureActive(false);
 
     if (controller.isOwner(ownerId)) {
       await controller.stopScan(ownerId);
@@ -557,7 +567,7 @@ export default function VerifyAsset({ navigation }: any) {
               placeholderTextColor="#9ca3af"
               value={epcValue}
               onChangeText={(value) => {
-                setEpcValue(normalizeEpc(value));
+                handleEpcChange(value);
                 setLastScanAt(null);
               }}
               onSubmitEditing={handleAddEpc}
@@ -572,16 +582,22 @@ export default function VerifyAsset({ navigation }: any) {
               activeOpacity={0.85}
             >
               <Ionicons
-                name={isListening ? 'radio-outline' : 'scan-outline'}
+                name={isEpcCaptureActive ? 'radio-outline' : 'scan-outline'}
                 size={18}
                 color="#ffffff"
               />
 
               <Text style={styles.scanButtonText}>
-                {isListening ? 'Stop' : 'Scan'}
+                {isEpcCaptureActive ? 'Stop' : 'Scan'}
               </Text>
             </TouchableOpacity>
           </View>
+
+          <Text style={styles.helperText}>
+            {isEpcCaptureActive
+              ? 'Listening for Chainway RFID broadcasts. Scan the tag now.'
+              : 'RFID broadcasts auto-fill this field. Manual EPC entry is still supported.'}
+          </Text>
 
           <View style={styles.manualActionsRow}>
             <TouchableOpacity

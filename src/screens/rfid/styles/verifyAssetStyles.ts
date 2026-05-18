@@ -131,6 +131,13 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
 
+  helperText: {
+    marginTop: 10,
+    fontSize: 12,
+    color: '#6b7280',
+    lineHeight: 18,
+  },
+
   locationInput: {
     backgroundColor: '#ffffff',
     borderWidth: 1,
