@@ -104,10 +104,6 @@ export default function VerifyAsset({ navigation }: any) {
     void loadDepartments();
   }, [loadDepartments]);
 
-  useEffect(() => {
-    if (!isOwner && isEpcCaptureActive) setIsEpcCaptureActive(false);
-  }, [isEpcCaptureActive, isOwner]);
-
   useFocusEffect(
     useCallback(() => {
       return () => {
@@ -119,8 +115,12 @@ export default function VerifyAsset({ navigation }: any) {
   );
 
   useEffect(() => {
-    if (!isEpcCaptureActive || !isScanning) return;
+    if (!isEpcCaptureActive) return;
 
+    const scanActive =
+      snapshot.lifecycle === 'starting' || snapshot.lifecycle === 'scanning';
+
+    if (!scanActive) return;
     if (!latestEntry || latestEntry.epcRaw === lastCapturedEpcRef.current) return;
 
     lastCapturedEpcRef.current = latestEntry.epcRaw;
@@ -132,7 +132,13 @@ export default function VerifyAsset({ navigation }: any) {
     setLastScanAt(latestEntry.lastSeenAt);
     setIsEpcCaptureActive(false);
     void controller.stopScan(ownerId);
-  }, [controller, isEpcCaptureActive, isScanning, latestEntry, ownerId]);
+  }, [
+    controller,
+    isEpcCaptureActive,
+    latestEntry,
+    ownerId,
+    snapshot.lifecycle,
+  ]);
 
   const handleStartCapture = async () => {
     if (isScanning) {
@@ -569,6 +575,9 @@ export default function VerifyAsset({ navigation }: any) {
               onChangeText={(value) => {
                 handleEpcChange(value);
                 setLastScanAt(null);
+              }}
+              onBlur={() => {
+                setIsEpcCaptureActive(false);
               }}
               onSubmitEditing={handleAddEpc}
               autoCapitalize="characters"

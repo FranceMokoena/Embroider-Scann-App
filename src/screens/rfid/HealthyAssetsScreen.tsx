@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -13,55 +13,40 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { apiRequest } from '../../config/api';
-import { PRIMARY_BLUE } from '../../theme/erpTheme';
 
-// HealthyAssetsScreen
-// UI REWORK ONLY
-// Logic, architecture, naming and backend flow untouched.
+import ErpConfirmModal from '../../components/erp/ErpConfirmModal';
+import { getAssetDisplayName } from '../../services/assetApi';
+import { PRIMARY_BLUE } from '../../theme/erpTheme';
+import { useAssetListScreen } from './hooks/useAssetListScreen';
 
 export default function HealthyAssetsScreen({ navigation }: any) {
-  const [assets, setAssets] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [reviewMessage, setReviewMessage] = useState('');
-
-  const loadAssets = useCallback(async () => {
-    setLoading(true);
-
-    try {
-      const result = await apiRequest<{ assets: any[] }>(
-        `/api/assets?status=Healthy`,
-        { method: 'GET' }
-      );
-
-      setAssets(result.assets || []);
-    } catch (err) {
-      console.error('Failed to load healthy assets', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadAssets();
-  }, [loadAssets]);
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-
-    try {
-      await loadAssets();
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  const handleSendForStatusReview = () => {
-    setReviewMessage(
-      `${assets.length} asset successfully sent for Healthy status review`,
-    );
-  };
+  const {
+    assets,
+    loading,
+    refreshing,
+    reviewMessage,
+    setReviewMessage,
+    selectedAsset,
+    deleteModalVisible,
+    exportModalVisible,
+    isDeleting,
+    isExporting,
+    setDeleteModalVisible,
+    setExportModalVisible,
+    onRefresh,
+    handleSelectAsset,
+    isAssetSelected,
+    handleDeletePress,
+    handleExportPress,
+    handleConfirmDelete,
+    handleConfirmExport,
+    handleSendForStatusReview,
+  } = useAssetListScreen({
+    statusFilter: 'Healthy',
+    exportTitle: 'Healthy Assets Export',
+    reviewMessageTemplate: count =>
+      `${count} asset successfully sent for Healthy status review`,
+  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -113,7 +98,7 @@ export default function HealthyAssetsScreen({ navigation }: any) {
 
         <TouchableOpacity
           style={[styles.actionButton, styles.deleteButton]}
-          onPress={() => {}}
+          onPress={handleDeletePress}
           activeOpacity={0.8}
         >
           <Ionicons name="trash-outline" size={14} color="#b91c1c" />
@@ -122,7 +107,7 @@ export default function HealthyAssetsScreen({ navigation }: any) {
 
         <TouchableOpacity
           style={[styles.actionButton, styles.exportButton]}
-          onPress={() => {}}
+          onPress={handleExportPress}
           activeOpacity={0.8}
         >
           <Ionicons name="download-outline" size={14} color={PRIMARY_BLUE} />
@@ -224,9 +209,13 @@ export default function HealthyAssetsScreen({ navigation }: any) {
 
               {/* TABLE ROWS */}
               {assets.map(asset => (
-                <View
-                  key={asset._id}
-                  style={styles.tableRow}
+                <Pressable
+                  key={asset.id || asset._id}
+                  onPress={() => handleSelectAsset(asset)}
+                  style={[
+                    styles.tableRow,
+                    isAssetSelected(asset) && styles.tableRowSelected,
+                  ]}
                 >
 
                   <Text
@@ -291,12 +280,41 @@ export default function HealthyAssetsScreen({ navigation }: any) {
                         ).toLocaleDateString()
                       : '—'}
                   </Text>
-                </View>
+                </Pressable>
               ))}
             </View>
           </ScrollView>
         )}
       </ScrollView>
+
+      <ErpConfirmModal
+        visible={deleteModalVisible}
+        title="Delete Asset"
+        message={
+          selectedAsset
+            ? `Permanently delete "${getAssetDisplayName(selectedAsset)}"? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Confirm Delete"
+        confirmTone="danger"
+        loading={isDeleting}
+        onCancel={() => setDeleteModalVisible(false)}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <ErpConfirmModal
+        visible={exportModalVisible}
+        title="Export Asset"
+        message={
+          selectedAsset
+            ? `Export "${getAssetDisplayName(selectedAsset)}" as an ERP PDF register document?`
+            : ''
+        }
+        confirmLabel="Proceed Export"
+        loading={isExporting}
+        onCancel={() => setExportModalVisible(false)}
+        onConfirm={handleConfirmExport}
+      />
 
       <Modal
         visible={Boolean(reviewMessage)}
@@ -495,6 +513,10 @@ repairText: {
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: '#edf2f7',
+  },
+
+  tableRowSelected: {
+    backgroundColor: '#eff6ff',
   },
 
   headerCell: {

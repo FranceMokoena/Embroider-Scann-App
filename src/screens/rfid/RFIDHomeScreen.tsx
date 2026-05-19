@@ -683,6 +683,11 @@ export default function RFIDHomeScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
 
+            <ScrollView
+              style={styles.drawerScroll}
+              contentContainerStyle={styles.drawerScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
             {[
               // ERP sidebar navigation items for dedicated asset status screens
               { label: 'Overview', icon: 'layers-outline' },
@@ -716,6 +721,7 @@ export default function RFIDHomeScreen({ navigation }: any) {
                 <Ionicons name="chevron-forward" size={18} color="#64748b" />
               </TouchableOpacity>
             ))}
+            </ScrollView>
           </Animated.View>
         </Pressable>
       </Modal>
@@ -1240,19 +1246,26 @@ const styles = StyleSheet.create({
     maxWidth: '84%',
     height: '100%',
     backgroundColor: '#ffffff',
-    paddingTop: 52,
+    paddingTop: 44,
     paddingHorizontal: 18,
+    paddingBottom: 16,
     shadowColor: '#0f172a',
     shadowOpacity: 0.22,
     shadowRadius: 18,
     shadowOffset: { width: -6, height: 0 },
     elevation: 8,
   },
+  drawerScroll: {
+    flex: 1,
+  },
+  drawerScrollContent: {
+    paddingBottom: 24,
+  },
   drawerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 18,
+    marginBottom: 12,
   },
   drawerTitle: {
     fontSize: 22,
@@ -1268,13 +1281,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   drawerItem: {
-    minHeight: 54,
-    borderRadius: 14,
+    minHeight: 48,
+    borderRadius: 12,
     backgroundColor: '#f8fafc',
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    paddingHorizontal: 14,
-    marginBottom: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

@@ -14,9 +14,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 
+import CampusTrackingMap from './components/CampusTrackingMap';
+import { useCampusProximityTracker } from './hooks/useCampusProximityTracker';
 import { apiRequest } from '../../config/api';
 import { normalizeEpc } from '../../rfid/chainwayRfid';
 import { useRFIDStreamController } from '../../rfid/RFIDStreamController';
+import { ERP_FORM } from '../../theme/erpFormStyles';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
 
 type LocateMode = 'epc' | 'assetNumber' | 'serialNumber' | 'assetName' | 'department';
@@ -115,7 +118,7 @@ export default function LocateAssetScreen({ navigation }: any) {
   const [locateMode, setLocateMode] = useState<LocateMode>('epc');
   const [query, setQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [isListening, setIsListening] = useState(false);
+  const [isEpcCaptureActive, setIsEpcCaptureActive] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
   const [locatedAsset, setLocatedAsset] = useState<AssetRecord | null>(null);
@@ -125,9 +128,6 @@ export default function LocateAssetScreen({ navigation }: any) {
 
   const lastCapturedEpcRef = useRef<string | null>(null);
   const dropdownAnim = useRef(new Animated.Value(0)).current;
-  const scanSweep = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(0)).current;
-  const resultFade = useRef(new Animated.Value(0)).current;
 
   const isOwner = controller.isOwner(ownerId);
   const isRfidScanning =
@@ -137,21 +137,23 @@ export default function LocateAssetScreen({ navigation }: any) {
   const selectedOption = locateOptions.find(option => option.value === locateMode);
   const locationLabel = getAssetLocation(locatedAsset);
   const activeStatus = isRfidScanning || isTracking || isSearching ? 'Scanning' : 'Idle';
+  const targetTrackingEpc = locatedAsset ? getAssetEpc(locatedAsset) : null;
+  const campusProximity = useCampusProximityTracker(
+    targetTrackingEpc,
+    isTracking,
+    snapshot,
+  );
 
-  const sweepTranslate = scanSweep.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-150, 150],
-  });
+  const hasActiveTrackingSession =
+    isTracking ||
+    isSearching ||
+    isEpcCaptureActive ||
+    isRfidScanning ||
+    Boolean(locatedAsset) ||
+    query.trim().length > 0;
 
-  const pulseScale = pulseAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.75, 1.35],
-  });
-
-  const pulseOpacity = pulseAnim.interpolate({
-    inputRange: [0, 0.68, 1],
-    outputRange: [0.4, 0.14, 0],
-  });
+  const stopButtonLabel = hasActiveTrackingSession ? 'Stop' : 'Stopped';
+  const stopButtonDisabled = !hasActiveTrackingSession;
 
   useEffect(() => {
     Animated.timing(dropdownAnim, {
@@ -162,67 +164,60 @@ export default function LocateAssetScreen({ navigation }: any) {
   }, [dropdownAnim, dropdownOpen]);
 
   useEffect(() => {
-    if (!isOwner && isListening) {
-      setIsListening(false);
-    }
-  }, [isListening, isOwner]);
+    if (!isEpcCaptureActive) return;
 
-  useEffect(() => {
-    if (!isListening || !isRfidScanning) return;
+    const scanActive =
+      snapshot.lifecycle === 'starting' || snapshot.lifecycle === 'scanning';
 
+    if (!scanActive) return;
     if (!latestEntry || latestEntry.epcRaw === lastCapturedEpcRef.current) return;
 
     lastCapturedEpcRef.current = latestEntry.epcRaw;
     setLocateMode('epc');
     setQuery(normalizeEpc(latestEntry.epcRaw));
     setLastRfidScanAt(latestEntry.lastSeenAt);
-    setIsListening(false);
-    void controller.stopScan(ownerId);
-  }, [controller, isListening, isRfidScanning, latestEntry, ownerId]);
+    setIsEpcCaptureActive(false);
+
+    if (!isTracking) {
+      void controller.stopScan(ownerId);
+    }
+  }, [
+    controller,
+    isEpcCaptureActive,
+    isTracking,
+    latestEntry,
+    ownerId,
+    snapshot.lifecycle,
+  ]);
 
   useEffect(() => {
-    if (!isTracking) {
-      scanSweep.stopAnimation();
-      pulseAnim.stopAnimation();
-      resultFade.setValue(0);
-      scanSweep.setValue(0);
-      pulseAnim.setValue(0);
+    if (!isTracking || !targetTrackingEpc) {
       return;
     }
 
-    scanSweep.setValue(0);
-    pulseAnim.setValue(0);
-    resultFade.setValue(0);
+    const startTrackingScan = async () => {
+      try {
+        if (!controller.isOwner(ownerId)) {
+          await controller.startScan(ownerId);
+        }
+      } catch (error) {
+        setSearchError(
+          error instanceof Error
+            ? error.message
+            : 'Failed to start RFID tracking session.',
+        );
+        setIsTracking(false);
+      }
+    };
 
-    Animated.timing(resultFade, {
-      toValue: 1,
-      duration: 220,
-      useNativeDriver: true,
-    }).start();
-
-    const sweepLoop = Animated.loop(
-      Animated.timing(scanSweep, {
-        toValue: 1,
-        duration: 1500,
-        useNativeDriver: true,
-      }),
-    );
-    const pulseLoop = Animated.loop(
-      Animated.timing(pulseAnim, {
-        toValue: 1,
-        duration: 1550,
-        useNativeDriver: true,
-      }),
-    );
-
-    sweepLoop.start();
-    pulseLoop.start();
+    void startTrackingScan();
 
     return () => {
-      sweepLoop.stop();
-      pulseLoop.stop();
+      if (controller.isOwner(ownerId)) {
+        void controller.stopScan(ownerId);
+      }
     };
-  }, [isTracking, pulseAnim, resultFade, scanSweep]);
+  }, [controller, isTracking, ownerId, targetTrackingEpc]);
 
   useFocusEffect(
     useCallback(() => {
@@ -310,93 +305,43 @@ export default function LocateAssetScreen({ navigation }: any) {
   };
 
   const handleStartCapture = async () => {
-    if (isRfidScanning) {
-      await controller.stopScan(ownerId);
-      setIsListening(false);
+    if (isRfidScanning && isEpcCaptureActive) {
+      setIsEpcCaptureActive(false);
+      if (!isTracking) {
+        await controller.stopScan(ownerId);
+      }
       return;
     }
 
     try {
-      setIsListening(true);
+      setIsEpcCaptureActive(true);
       lastCapturedEpcRef.current = null;
       controller.clear();
       await controller.startScan(ownerId);
     } catch (error) {
-      setIsListening(false);
+      setIsEpcCaptureActive(false);
       setSearchError(error instanceof Error ? error.message : 'Failed to start RFID scanning.');
     }
   };
 
   const handleStopTracking = async () => {
+    if (!hasActiveTrackingSession) {
+      return;
+    }
+
     setIsTracking(false);
     setLocatedAsset(null);
     setResultAssets([]);
     setSearchError('');
     setQuery('');
     setLastRfidScanAt(null);
-    setIsListening(false);
+    setIsEpcCaptureActive(false);
     setDropdownOpen(false);
+    setIsSearching(false);
 
     if (controller.isOwner(ownerId)) {
       await controller.stopScan(ownerId);
     }
-  };
-
-  const renderMapContent = () => {
-    if (!locatedAsset || !isTracking) {
-      return (
-        <View style={styles.mapIdleState}>
-          <View style={styles.mapIdleIcon}>
-            <Ionicons name="locate-outline" size={26} color={PRIMARY_BLUE} />
-          </View>
-          <Text style={styles.mapIdleTitle}>Locator Idle</Text>
-          <Text style={styles.mapIdleText}>Awaiting asset match from ERP records.</Text>
-        </View>
-      );
-    }
-
-    return (
-      <Animated.View style={[styles.mapLiveLayer, { opacity: resultFade }]}>
-        <View style={styles.mapGridVertical} />
-        <View style={styles.mapGridHorizontal} />
-        <View style={styles.mapGridDiagonal} />
-        <Animated.View
-          style={[
-            styles.scanSweep,
-            { transform: [{ translateX: sweepTranslate }] },
-          ]}
-        />
-        <Animated.View
-          style={[
-            styles.pulseRing,
-            {
-              opacity: pulseOpacity,
-              transform: [{ scale: pulseScale }],
-            },
-          ]}
-        />
-        <View style={styles.assetDotOuter}>
-          <View style={styles.assetDotInner} />
-        </View>
-        <View style={styles.currentLocationTag}>
-                <Ionicons name="business-outline" size={15} color={PRIMARY_BLUE} />
-          <Text style={styles.currentLocationText} numberOfLines={1}>
-            {locationLabel}
-          </Text>
-        </View>
-        <View style={styles.directionCard}>
-          <View style={styles.directionIcon}>
-            <Ionicons name="navigate-outline" size={18} color="#ffffff" />
-          </View>
-          <View style={styles.directionCopy}>
-            <Text style={styles.directionTitle}>Tracking Route</Text>
-            <Text style={styles.directionText} numberOfLines={1}>
-              Proceed to {locationLabel}
-            </Text>
-          </View>
-        </View>
-      </Animated.View>
-    );
   };
 
   return (
@@ -523,7 +468,7 @@ export default function LocateAssetScreen({ navigation }: any) {
             </View>
 
             <TextInput
-              style={styles.searchInput}
+              style={[ERP_FORM.input, styles.searchInput]}
               placeholder="Enter asset reference"
               placeholderTextColor="#94a3b8"
               value={query}
@@ -547,12 +492,12 @@ export default function LocateAssetScreen({ navigation }: any) {
               activeOpacity={0.85}
             >
               <Ionicons
-                name={isListening ? 'radio-outline' : 'scan-outline'}
+                name={isEpcCaptureActive ? 'radio-outline' : 'scan-outline'}
                 size={17}
                 color={PRIMARY_BLUE}
               />
               <Text style={styles.rfidButtonText}>
-                {isListening ? 'Stop Scan' : 'Scan EPC'}
+                {isEpcCaptureActive ? 'Stop Scan' : 'Scan EPC'}
               </Text>
             </TouchableOpacity>
 
@@ -647,7 +592,11 @@ export default function LocateAssetScreen({ navigation }: any) {
           </View>
 
           <View style={styles.mapCanvas}>
-            {renderMapContent()}
+            <CampusTrackingMap
+              isTracking={isTracking && Boolean(locatedAsset)}
+              locationLabel={locationLabel}
+              proximity={campusProximity}
+            />
           </View>
 
           {locatedAsset ? (
@@ -667,12 +616,20 @@ export default function LocateAssetScreen({ navigation }: any) {
           ) : null}
 
           <TouchableOpacity
-            style={styles.stopButton}
+            style={[
+              styles.stopButton,
+              stopButtonDisabled && styles.stopButtonInactive,
+            ]}
             onPress={handleStopTracking}
             activeOpacity={0.85}
+            disabled={stopButtonDisabled}
           >
-            <Ionicons name="stop-circle-outline" size={18} color="#ffffff" />
-            <Text style={styles.stopButtonText}>Stop</Text>
+            <Ionicons
+              name={stopButtonDisabled ? 'pause-circle-outline' : 'stop-circle-outline'}
+              size={18}
+              color="#ffffff"
+            />
+            <Text style={styles.stopButtonText}>{stopButtonLabel}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -860,14 +817,6 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    minHeight: 44,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-    fontSize: 13,
-    color: '#0f172a',
   },
   buttonRow: {
     flexDirection: 'row',
@@ -1229,6 +1178,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  stopButtonInactive: {
+    backgroundColor: '#94a3b8',
+    opacity: 0.85,
   },
   stopButtonText: {
     marginLeft: 6,

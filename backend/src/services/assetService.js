@@ -1,6 +1,8 @@
 "use strict";
 
+const mongoose = require('mongoose');
 const Asset = require('../models/Asset');
+const AssetTagMapping = require('../models/AssetTagMapping');
 
 const EPC_REGEX = /^[A-Z0-9]{12,24}$/;
 const STATUS_VALUES = ['Healthy', 'Repairable', 'Beyond Repair'];
@@ -204,6 +206,78 @@ const getAllAssets = async (filters = {}) => {
   return assets.map(mapAssetResponse);
 };
 
+const updateAsset = async (assetId, payload) => {
+  if (!mongoose.Types.ObjectId.isValid(assetId)) {
+    throw createServiceError('Invalid asset id', 400);
+  }
+
+  const updates = {};
+
+  if (payload.department !== undefined) {
+    const dept = trimString(payload.department);
+    if (!dept) {
+      throw createServiceError('department cannot be empty', 400);
+    }
+    updates.category = dept;
+  }
+
+  if (payload.location !== undefined) {
+    const loc = normalizeOptionalString(payload.location);
+    if (loc) {
+      updates.location = loc;
+    }
+  }
+
+  if (payload.status !== undefined) {
+    const status = normalizeOptionalString(payload.status);
+    if (status && !STATUS_VALUES.includes(status)) {
+      throw createServiceError(`status must be one of: ${STATUS_VALUES.join(', ')}`, 400);
+    }
+    if (status) {
+      updates.status = status;
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw createServiceError('No valid fields to update', 400);
+  }
+
+  const asset = await Asset.findByIdAndUpdate(
+    assetId,
+    { $set: updates },
+    { new: true, runValidators: true },
+  );
+
+  if (!asset) {
+    throw createServiceError('Asset not found', 404);
+  }
+
+  return mapAssetResponse(asset);
+};
+
+const deleteAsset = async assetId => {
+  if (!mongoose.Types.ObjectId.isValid(assetId)) {
+    throw createServiceError('Invalid asset id', 400);
+  }
+
+  const asset = await Asset.findByIdAndDelete(assetId);
+  if (!asset) {
+    throw createServiceError('Asset not found', 404);
+  }
+
+  await AssetTagMapping.updateMany(
+    { assetId: asset._id, status: 'active' },
+    {
+      $set: {
+        status: 'removed',
+        unassignedAt: new Date(),
+      },
+    },
+  );
+
+  return mapAssetResponse(asset);
+};
+
 const getAssetSummary = async () => {
   const [healthy, repairable, beyondRepair, total] = await Promise.all([
     Asset.countDocuments({ status: 'Healthy' }),
@@ -318,8 +392,10 @@ const verifyRoomInventory = async ({ location, epcs, userId }) => {
 module.exports = {
   createBulkAssets,
   createAsset,
+  deleteAsset,
   getAssetByEPC,
   getAllAssets,
   getAssetSummary,
+  updateAsset,
   verifyRoomInventory,
 };

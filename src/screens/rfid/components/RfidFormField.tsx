@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, TextInput, TextInputProps, View } from 'react-native';
 
+import { ERP_FORM } from '../../../theme/erpFormStyles';
 import styles from '../styles/addAssetStyles';
 
 interface RfidFormFieldProps extends TextInputProps {
@@ -18,7 +19,7 @@ export default function RfidFormField({
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
         {...inputProps}
-        style={styles.textInput}
+        style={[ERP_FORM.input, styles.textInput]}
         placeholderTextColor="#94a3b8"
       />
       {helperText ? <Text style={styles.helperText}>{helperText}</Text> : null}

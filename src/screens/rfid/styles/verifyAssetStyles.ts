@@ -139,14 +139,15 @@ const styles = StyleSheet.create({
   },
 
   locationInput: {
-    backgroundColor: '#ffffff',
+    minHeight: 44,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: '#111827',
+    borderColor: '#cbd5e1',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: '#0f172a',
   },
 
   /* ================= SCAN INPUT ================= */
@@ -155,17 +156,15 @@ const styles = StyleSheet.create({
   },
 
   epcInput: {
-    backgroundColor: '#ffffff',
+    minHeight: 44,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 14,
-    color: '#111827',
-    minHeight: 46,
-
-    // expands feel when scanning active (UI support only)
+    borderColor: '#cbd5e1',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: '#0f172a',
     flexGrow: 1,
   },
 

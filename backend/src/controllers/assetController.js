@@ -75,9 +75,39 @@ const getAssetSummary = async (_req, res) => {
   }
 };
 
+const deleteAsset = async (req, res) => {
+  try {
+    const asset = await assetService.deleteAsset(req.params.id);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Asset deleted successfully',
+      data: asset,
+    });
+  } catch (error) {
+    return sendAssetError(res, error, 'Failed to delete asset');
+  }
+};
+
+const updateAsset = async (req, res) => {
+  try {
+    const asset = await assetService.updateAsset(req.params.id, req.body);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Asset updated successfully',
+      data: asset,
+    });
+  } catch (error) {
+    return sendAssetError(res, error, 'Failed to update asset');
+  }
+};
+
 module.exports = {
   createBulkAssets,
   createAsset,
+  deleteAsset,
   getAssetSummary,
   listAssets,
+  updateAsset,
 };

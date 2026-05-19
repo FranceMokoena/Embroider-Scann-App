@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -13,48 +13,40 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { apiRequest } from '../../config/api';
-import { PRIMARY_BLUE } from '../../theme/erpTheme';
 
-// RepairableAssetsScreen
-// Purpose: Dedicated ERP administrative screen listing assets with status === 'Repairable'.
+import ErpConfirmModal from '../../components/erp/ErpConfirmModal';
+import { getAssetDisplayName } from '../../services/assetApi';
+import { PRIMARY_BLUE } from '../../theme/erpTheme';
+import { useAssetListScreen } from './hooks/useAssetListScreen';
 
 export default function RepairableAssetsScreen({ navigation }: any) {
-  const [assets, setAssets] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [reviewMessage, setReviewMessage] = useState('');
-
-  const loadAssets = useCallback(async () => {
-    setLoading(true);
-    try {
-      const result = await apiRequest<{ assets: any[] }>(`/api/assets?status=Repairable`, { method: 'GET' });
-      setAssets(result.assets || []);
-    } catch (err) {
-      console.error('Failed to load repairable assets', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadAssets();
-  }, [loadAssets]);
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await loadAssets();
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  const handleSendForStatusReview = () => {
-    setReviewMessage(
-      `${assets.length} asset successfully sent for Repairable status review`,
-    );
-  };
+  const {
+    assets,
+    loading,
+    refreshing,
+    reviewMessage,
+    setReviewMessage,
+    selectedAsset,
+    deleteModalVisible,
+    exportModalVisible,
+    isDeleting,
+    isExporting,
+    setDeleteModalVisible,
+    setExportModalVisible,
+    onRefresh,
+    handleSelectAsset,
+    isAssetSelected,
+    handleDeletePress,
+    handleExportPress,
+    handleConfirmDelete,
+    handleConfirmExport,
+    handleSendForStatusReview,
+  } = useAssetListScreen({
+    statusFilter: 'Repairable',
+    exportTitle: 'Repairable Assets Export',
+    reviewMessageTemplate: count =>
+      `${count} asset successfully sent for Repairable status review`,
+  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -81,12 +73,12 @@ export default function RepairableAssetsScreen({ navigation }: any) {
           <Text style={[styles.actionText, styles.repairText]}>Send For Review</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.actionButton, styles.deleteButton]} onPress={() => {}} activeOpacity={0.8}>
+        <TouchableOpacity style={[styles.actionButton, styles.deleteButton]} onPress={handleDeletePress} activeOpacity={0.8}>
           <Ionicons name="trash-outline" size={14} color="#b91c1c" />
           <Text style={[styles.actionText, styles.deleteText]}>Delete</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.actionButton, styles.exportButton]} onPress={() => {}} activeOpacity={0.8}>
+        <TouchableOpacity style={[styles.actionButton, styles.exportButton]} onPress={handleExportPress} activeOpacity={0.8}>
           <Ionicons name="download-outline" size={14} color={PRIMARY_BLUE} />
           <Text style={[styles.actionText, styles.exportText]}>Export</Text>
         </TouchableOpacity>
@@ -116,7 +108,11 @@ export default function RepairableAssetsScreen({ navigation }: any) {
               </View>
 
               {assets.map(asset => (
-                <View key={asset._id} style={styles.tableRow}>
+                <Pressable
+                  key={asset.id || asset._id}
+                  onPress={() => handleSelectAsset(asset)}
+                  style={[styles.tableRow, isAssetSelected(asset) && styles.tableRowSelected]}
+                >
                   <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>{asset.assetName || asset.name || '—'}</Text>
                   <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>{asset.assetNumber || '—'}</Text>
                   <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>{asset.epc || asset.epcKey || '—'}</Text>
@@ -124,12 +120,41 @@ export default function RepairableAssetsScreen({ navigation }: any) {
                   <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cell, styles.statusText]}>{asset.status || '—'}</Text>
                   <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>{asset.serialNumber || '—'}</Text>
                   <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>{asset.createdAt ? new Date(asset.createdAt).toLocaleDateString() : '—'}</Text>
-                </View>
+                </Pressable>
               ))}
             </View>
           </ScrollView>
         )}
       </ScrollView>
+
+      <ErpConfirmModal
+        visible={deleteModalVisible}
+        title="Delete Asset"
+        message={
+          selectedAsset
+            ? `Permanently delete "${getAssetDisplayName(selectedAsset)}"? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Confirm Delete"
+        confirmTone="danger"
+        loading={isDeleting}
+        onCancel={() => setDeleteModalVisible(false)}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <ErpConfirmModal
+        visible={exportModalVisible}
+        title="Export Asset"
+        message={
+          selectedAsset
+            ? `Export "${getAssetDisplayName(selectedAsset)}" as an ERP PDF register document?`
+            : ''
+        }
+        confirmLabel="Proceed Export"
+        loading={isExporting}
+        onCancel={() => setExportModalVisible(false)}
+        onConfirm={handleConfirmExport}
+      />
 
       <Modal
         visible={Boolean(reviewMessage)}
@@ -186,6 +211,7 @@ const styles = StyleSheet.create({
   tableWrap: { flex: 1, padding: 12 },
   table: { backgroundColor: '#ffffff', borderRadius: 10, borderWidth: 1, borderColor: '#dbe2ea', minWidth: 780, overflow: 'hidden' },
   tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#edf2f7' },
+  tableRowSelected: { backgroundColor: '#eff6ff' },
   tableHeader: { backgroundColor: '#f8fafc' },
   headerCell: { fontWeight: '700', fontSize: 11, color: '#0f172a', backgroundColor: '#f8fafc' },
   cell: { width: 112, paddingVertical: 10, paddingHorizontal: 8, fontSize: 11, color: '#0f172a', borderRightWidth: 1, borderRightColor: '#e2e8f0', overflow: 'hidden' },
