@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
+import type { DimensionValue } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import type { CampusProximityState } from '../hooks/useCampusProximityTracker';
@@ -87,10 +88,10 @@ export default function CampusTrackingMap({
     );
   }
 
-  const techLeft = `${proximity.technicianPosition.x * 100}%`;
-  const techTop = `${proximity.technicianPosition.y * 100}%`;
-  const assetLeft = `${proximity.assetPosition.x * 100}%`;
-  const assetTop = `${proximity.assetPosition.y * 100}%`;
+  const techLeft = `${proximity.technicianPosition.x * 100}%` as DimensionValue;
+  const techTop = `${proximity.technicianPosition.y * 100}%` as DimensionValue;
+  const assetLeft = `${proximity.assetPosition.x * 100}%` as DimensionValue;
+  const assetTop = `${proximity.assetPosition.y * 100}%` as DimensionValue;
 
   return (
     <View style={styles.liveMap}>
@@ -146,19 +147,7 @@ export default function CampusTrackingMap({
         </Text>
       </View>
 
-      <Animated.View style={[styles.guidanceCard, { opacity: guidanceOpacity }]}>
-        <View style={styles.guidanceIcon}>
-          <Ionicons
-            name={proximity.isApproaching ? 'arrow-forward-outline' : 'compass-outline'}
-            size={18}
-            color="#ffffff"
-          />
-        </View>
-        <View style={styles.guidanceCopy}>
-          <Text style={styles.guidanceTitle}>Tracking Guidance</Text>
-          <Text style={styles.guidanceText}>{proximity.guidanceText}</Text>
-        </View>
-      </Animated.View>
+      
     </View>
   );
 }

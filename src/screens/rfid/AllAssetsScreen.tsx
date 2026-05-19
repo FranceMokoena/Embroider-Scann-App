@@ -21,6 +21,7 @@ import { apiRequest } from '../../config/api';
 import { normalizeEpc } from '../../rfid/chainwayRfid';
 import { getAssetId, patchAssetById } from '../../services/assetApi';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
+import { exportAssetsToPdf, exportLifecycleToPdf } from '../../utils/assetPdfExport';
 
 type AssetRecord = {
   id?: string;
@@ -51,7 +52,18 @@ const filterOptions: Array<{ label: string; value: FilterMode }> = [
   { label: 'Serial Number', value: 'serialNumber' },
 ];
 
-const dash = '—';
+type AssetLifecycleRecord = {
+  _id?: string;
+  assetName?: string;
+  assetNumber?: string;
+  initialSection?: string;
+  currentSection?: string;
+  assignedBy?: string;
+  assignmentDate?: string;
+  lastUpdated?: string;
+};
+
+const dash = '-';
 
 const getAssetName = (asset: AssetRecord) =>
   asset.assetName || asset.name || dash;
@@ -118,14 +130,20 @@ export default function AllAssetsScreen({ navigation }: any) {
   const [assignFilterValue, setAssignFilterValue] = useState('');
   const [assignFieldDropdownOpen, setAssignFieldDropdownOpen] = useState(false);
   const [assignTargetDepartment, setAssignTargetDepartment] = useState('');
-  const [assignCustomDepartment, setAssignCustomDepartment] = useState('');
   const [assignDeptDropdownOpen, setAssignDeptDropdownOpen] = useState(false);
   const [isApplyingAssignment, setIsApplyingAssignment] = useState(false);
+  const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
+  const [departmentsLoading, setDepartmentsLoading] = useState(false);
+  const [isExportingAssets, setIsExportingAssets] = useState(false);
+  const [isExportingLifecycle, setIsExportingLifecycle] = useState(false);
+
+  const [lifecycle, setLifecycle] = useState<AssetLifecycleRecord[]>([]);
+  const [lifecycleLoading, setLifecycleLoading] = useState(false);
 
   const selectedFilter = filterOptions.find(option => option.value === filterMode);
   const selectedAssignFilter = filterOptions.find(option => option.value === assignFilterMode);
 
-  const uniqueDepartments = useMemo(() => {
+  const assetDepartments = useMemo(() => {
     const set = new Set<string>();
     assets.forEach(asset => {
       const d = (asset.department || asset.category || asset.location || '').trim();
@@ -135,6 +153,11 @@ export default function AllAssetsScreen({ navigation }: any) {
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [assets]);
+
+  const availableDepartments = useMemo(() => {
+    const set = new Set<string>([...departmentOptions, ...assetDepartments].filter(Boolean));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [assetDepartments, departmentOptions]);
 
   const loadAssets = useCallback(async () => {
     setLoading(true);
@@ -153,15 +176,53 @@ export default function AllAssetsScreen({ navigation }: any) {
     }
   }, []);
 
+  const loadLifecycle = useCallback(async () => {
+    setLifecycleLoading(true);
+
+    try {
+      const result = await apiRequest<{ lifecycle?: AssetLifecycleRecord[] }>('/api/assets/lifecycle/history', {
+        method: 'GET',
+      });
+
+      setLifecycle(result.lifecycle || []);
+    } catch (error) {
+      console.error('Failed to load assignment lifecycle', error);
+      setLifecycle([]);
+    } finally {
+      setLifecycleLoading(false);
+    }
+  }, []);
+
+  const loadDepartmentOptions = useCallback(async () => {
+    setDepartmentsLoading(true);
+
+    try {
+      const result = await apiRequest<{ departments?: string[] }>('/api/assets/departments/options', {
+        method: 'GET',
+      });
+
+      setDepartmentOptions((result.departments || []).filter(Boolean));
+    } catch (error) {
+      console.error('Failed to load department options', error);
+      setDepartmentOptions([]);
+    } finally {
+      setDepartmentsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadAssets();
-  }, [loadAssets]);
+    void loadLifecycle();
+    void loadDepartmentOptions();
+  }, [loadAssets, loadLifecycle, loadDepartmentOptions]);
 
   const onRefresh = async () => {
     setRefreshing(true);
 
     try {
       await loadAssets();
+      await loadLifecycle();
+      await loadDepartmentOptions();
     } finally {
       setRefreshing(false);
     }
@@ -179,20 +240,20 @@ export default function AllAssetsScreen({ navigation }: any) {
     );
   }, [assets, filterMode, searchQuery]);
 
-  const resolveTargetDepartment = () => {
-    const custom = assignCustomDepartment.trim();
-    if (custom) {
-      return custom;
-    }
-    return assignTargetDepartment.trim();
-  };
-
   const handleApplyDepartmentAssignment = async () => {
-    const targetDept = resolveTargetDepartment();
+    const targetDept = assignTargetDepartment.trim();
     if (!targetDept) {
       Alert.alert(
         'Department required',
-        'Choose an existing department / section from the list, or type a new one in the custom field.',
+        'Choose an existing department / section from the dropdown list.',
+      );
+      return;
+    }
+
+    if (!availableDepartments.includes(targetDept)) {
+      Alert.alert(
+        'Invalid department',
+        'Select a department that already exists in the system.',
       );
       return;
     }
@@ -238,9 +299,10 @@ export default function AllAssetsScreen({ navigation }: any) {
 
             setIsApplyingAssignment(false);
             setAssignFilterValue('');
-            setAssignCustomDepartment('');
             setAssignTargetDepartment('');
             await loadAssets();
+            await loadLifecycle();
+            await loadDepartmentOptions();
 
             if (errors.length) {
               Alert.alert(
@@ -254,6 +316,44 @@ export default function AllAssetsScreen({ navigation }: any) {
         },
       ],
     );
+  };
+
+  const handleExportAssets = async () => {
+    setIsExportingAssets(true);
+
+    try {
+      await exportAssetsToPdf({
+        title: 'All Assets - Master Records',
+        statusLabel: loading ? 'Syncing' : 'Current',
+        assets: filteredAssets,
+      });
+    } catch (error) {
+      Alert.alert(
+        'Export failed',
+        error instanceof Error ? error.message : 'Failed to export the asset table.',
+      );
+    } finally {
+      setIsExportingAssets(false);
+    }
+  };
+
+  const handleExportLifecycle = async () => {
+    setIsExportingLifecycle(true);
+
+    try {
+      await exportLifecycleToPdf({
+        title: 'Asset Assignment Lifecycle',
+        statusLabel: lifecycleLoading ? 'Loading' : 'Ready',
+        records: lifecycle,
+      });
+    } catch (error) {
+      Alert.alert(
+        'Export failed',
+        error instanceof Error ? error.message : 'Failed to export the assignment lifecycle.',
+      );
+    } finally {
+      setIsExportingLifecycle(false);
+    }
   };
 
   const renderStatusBadge = (status?: string | null) => {
@@ -297,6 +397,28 @@ export default function AllAssetsScreen({ navigation }: any) {
       <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{getCurrentLocation(item)}</Text>
       <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{getVerificationStatus(item)}</Text>
     </TouchableOpacity>
+  );
+
+  const renderLifecycleRow = ({ item, index }: { item: AssetLifecycleRecord; index: number }) => (
+    <View style={[styles.tableRow, index % 2 === 1 && styles.tableRowAlternate]}>
+      <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{item.assetName || dash}</Text>
+      <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{item.initialSection || dash}</Text>
+      <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{item.currentSection || dash}</Text>
+      <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{item.assignedBy || dash}</Text>
+      <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{formatDate(item.assignmentDate)}</Text>
+      <TouchableOpacity
+        style={styles.viewButton}
+        activeOpacity={0.75}
+        onPress={() => {
+          const matchedAsset = assets.find(a => a.assetName === item.assetName);
+          if (matchedAsset) {
+            setSelectedAsset(matchedAsset);
+          }
+        }}
+      >
+        <Text style={styles.viewButtonText}>View</Text>
+      </TouchableOpacity>
+    </View>
   );
 
   return (
@@ -484,7 +606,7 @@ export default function AllAssetsScreen({ navigation }: any) {
                 activeOpacity={0.85}
               >
                 <Text style={styles.dropdownButtonText} numberOfLines={1}>
-                  {assignTargetDepartment || 'Select existing…'}
+                  {assignTargetDepartment || (departmentsLoading ? 'Loading...' : 'Select existing...')}
                 </Text>
                 <Ionicons
                   name={assignDeptDropdownOpen ? 'chevron-up' : 'chevron-down'}
@@ -496,12 +618,12 @@ export default function AllAssetsScreen({ navigation }: any) {
               {assignDeptDropdownOpen ? (
                 <View style={[styles.dropdownList, styles.deptDropdownList]}>
                   <ScrollView nestedScrollEnabled style={{ maxHeight: 180 }}>
-                    {uniqueDepartments.length === 0 ? (
+                    {availableDepartments.length === 0 ? (
                       <Text style={styles.dropdownEmpty}>
-                        No departments in loaded records. Use custom field below.
+                        No departments are available in the system.
                       </Text>
                     ) : (
-                      uniqueDepartments.map(dept => (
+                      availableDepartments.map(dept => (
                         <TouchableOpacity
                           key={dept}
                           style={[
@@ -510,7 +632,6 @@ export default function AllAssetsScreen({ navigation }: any) {
                           ]}
                           onPress={() => {
                             setAssignTargetDepartment(dept);
-                            setAssignCustomDepartment('');
                             setAssignDeptDropdownOpen(false);
                           }}
                           activeOpacity={0.75}
@@ -531,19 +652,6 @@ export default function AllAssetsScreen({ navigation }: any) {
                 </View>
               ) : null}
             </View>
-
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Or type new department / section"
-              placeholderTextColor="#94a3b8"
-              value={assignCustomDepartment}
-              onChangeText={text => {
-                setAssignCustomDepartment(text);
-                if (text.trim()) {
-                  setAssignTargetDepartment('');
-                }
-              }}
-            />
           </View>
 
           <TouchableOpacity
@@ -571,9 +679,24 @@ export default function AllAssetsScreen({ navigation }: any) {
             <Text style={styles.tableTitle}>Enterprise Asset Table</Text>
           </View>
 
-          <View style={styles.syncPill}>
-            <View style={styles.syncDot} />
-            <Text style={styles.syncText}>{loading ? 'Syncing' : 'Current'}</Text>
+          <View style={styles.tableActions}>
+            <View style={styles.syncPill}>
+              <View style={styles.syncDot} />
+              <Text style={styles.syncText}>{loading ? 'Syncing' : 'Current'}</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.exportButton, isExportingAssets && styles.exportButtonDisabled]}
+              onPress={handleExportAssets}
+              disabled={isExportingAssets}
+              activeOpacity={0.85}
+            >
+              {isExportingAssets ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Ionicons name="download-outline" size={15} color="#ffffff" />
+              )}
+              <Text style={styles.exportButtonText}>Export</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -616,6 +739,72 @@ export default function AllAssetsScreen({ navigation }: any) {
                 refreshControl={
                   <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                 }
+              />
+            </View>
+          </ScrollView>
+        )}
+      </View>
+
+      <View style={styles.tableSection}>
+        <View style={styles.tableHeaderBar}>
+          <View>
+            <Text style={styles.eyebrow}>Assignment Lifecycle</Text>
+            <Text style={styles.tableTitle}>Asset Section Transfer History</Text>
+          </View>
+
+          <View style={styles.tableActions}>
+            <View style={styles.syncPill}>
+              <View style={styles.syncDot} />
+              <Text style={styles.syncText}>{lifecycleLoading ? 'Loading' : 'Ready'}</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.exportButton, isExportingLifecycle && styles.exportButtonDisabled]}
+              onPress={handleExportLifecycle}
+              disabled={isExportingLifecycle}
+              activeOpacity={0.85}
+            >
+              {isExportingLifecycle ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Ionicons name="download-outline" size={15} color="#ffffff" />
+              )}
+              <Text style={styles.exportButtonText}>Export</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {lifecycleLoading ? (
+          <ActivityIndicator size="large" color={PRIMARY_BLUE} style={{ marginTop: 34 }} />
+        ) : lifecycle.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="time-outline" size={42} color="#94a3b8" />
+            <Text style={styles.emptyTitle}>No assignment history available</Text>
+          </View>
+        ) : (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator
+            style={styles.tableScroll}
+          >
+            <View style={styles.table}>
+              <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Asset Name</Text>
+                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Initial Section</Text>
+                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Current Section</Text>
+                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Assigned By</Text>
+                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Assignment Date</Text>
+                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Action</Text>
+              </View>
+
+              <FlatList
+                style={styles.assetList}
+                data={lifecycle}
+                keyExtractor={(item, index) => `${item._id}-${index}`}
+                renderItem={renderLifecycleRow}
+                initialNumToRender={18}
+                maxToRenderPerBatch={18}
+                windowSize={8}
+                removeClippedSubviews
               />
             </View>
           </ScrollView>
@@ -918,6 +1107,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingHorizontal: 4,
   },
+  tableActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   tableTitle: {
     marginTop: 3,
     fontSize: 15,
@@ -943,6 +1137,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: '#166534',
+  },
+  exportButton: {
+    minHeight: 34,
+    borderRadius: 8,
+    backgroundColor: PRIMARY_BLUE,
+    paddingHorizontal: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exportButtonDisabled: {
+    opacity: 0.72,
+  },
+  exportButtonText: {
+    marginLeft: 6,
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#ffffff',
   },
   emptyState: {
     minHeight: 220,
@@ -1090,5 +1302,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#0f172a',
+  },
+  viewButton: {
+    minWidth: 60,
+    minHeight: 34,
+    borderRadius: 6,
+    backgroundColor: PRIMARY_BLUE,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 8,
+  },
+  viewButtonText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#ffffff',
   },
 });

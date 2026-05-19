@@ -60,6 +60,13 @@ const assetSchema = new mongoose.Schema({
     assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     source: { type: String, set: trimString },
   },
+  assignmentLifecycleHistory: [{
+    fromSection: { type: String, set: trimString },
+    toSection: { type: String, set: trimString, required: true },
+    assignedAt: { type: Date, default: () => new Date() },
+    assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    source: { type: String, set: trimString },
+  }],
   verificationHistory: [{
     location: { type: String, set: trimString },
     result: { type: String, set: trimString },

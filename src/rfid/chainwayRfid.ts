@@ -4,6 +4,8 @@ import {
   requireOptionalNativeModule,
 } from 'expo-modules-core';
 
+import { playRfidScanSound } from './rfidScanSound';
+
 export const CHAINWAY_RFID_MODULE_NAME = 'ChainwayRfid';
 export const CHAINWAY_RFID_ACTION = 'com.rscja.scanner.action.scanner.RFID';
 export const CHAINWAY_RFID_EXTRA_KEY = 'data';
@@ -610,6 +612,7 @@ const waitForConfirmedEpc = (
         }
 
         const normalizedEvent = { epc, timestamp };
+        void playRfidScanSound();
         recordJsRfidEvent(normalizedEvent, 'inventoryConfirmation');
         finish(normalizedEvent);
       });
@@ -674,6 +677,7 @@ export const addRfidTagListener = (
         timestamp: Number(event?.timestamp) || Date.now(),
       };
 
+      void playRfidScanSound();
       recordJsRfidEvent(normalizedEvent, source);
       logDebug('JS RFID event received', normalizedEvent);
       listener(normalizedEvent);

@@ -5,16 +5,24 @@ export type AssetRecord = {
   _id?: string;
   assetName?: string;
   name?: string;
-  assetNumber?: string;
-  epc?: string;
-  epcKey?: string;
-  department?: string;
-  category?: string;
-  status?: string;
-  serialNumber?: string;
-  location?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  assetNumber?: string | null;
+  epc?: string | null;
+  epcKey?: string | null;
+  department?: string | null;
+  category?: string | null;
+  status?: string | null;
+  serialNumber?: string | null;
+  location?: string | null;
+  verificationStatus?: string | null;
+  assignmentLifecycleHistory?: Array<{
+    fromSection?: string;
+    toSection?: string;
+    assignedAt?: string;
+    assignedBy?: string;
+    source?: string;
+  }>;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 export const getAssetId = (asset: AssetRecord) => String(asset.id || asset._id || '');

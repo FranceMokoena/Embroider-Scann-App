@@ -11,50 +11,58 @@ type AssetPdfExportOptions = {
   assets: AssetRecord[];
 };
 
+export type AssignmentLifecycleExportRecord = {
+  assetName?: string;
+  assetNumber?: string;
+  initialSection?: string;
+  currentSection?: string;
+  assignedBy?: string;
+  assignmentDate?: string;
+  lastUpdated?: string;
+};
+
+type LifecyclePdfExportOptions = {
+  title: string;
+  statusLabel: string;
+  records: AssignmentLifecycleExportRecord[];
+};
+
 const escapeHtml = (value: unknown) =>
-  String(value ?? '—')
+  String(value ?? '-')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
-const formatDate = (value?: string) => {
+const formatDate = (value?: string | null) => {
   if (!value) {
-    return '—';
+    return '-';
   }
 
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    return '—';
+    return '-';
   }
 
   return parsed.toLocaleString();
 };
 
-const buildAssetRows = (assets: AssetRecord[]) =>
-  assets
-    .map(
-      asset => `
-        <tr>
-          <td>${escapeHtml(getAssetDisplayName(asset))}</td>
-          <td>${escapeHtml(asset.assetNumber)}</td>
-          <td>${escapeHtml(asset.epc || asset.epcKey)}</td>
-          <td>${escapeHtml(asset.department || asset.category)}</td>
-          <td>${escapeHtml(asset.status)}</td>
-          <td>${escapeHtml(asset.serialNumber)}</td>
-          <td>${escapeHtml(formatDate(asset.createdAt))}</td>
-        </tr>
-      `,
-    )
-    .join('');
-
-export const buildAssetExportHtml = ({
+const buildDocumentShell = ({
   title,
   statusLabel,
-  assets,
-}: AssetPdfExportOptions) => {
+  recordCount,
+  heading,
+  subtitle,
+  table,
+}: {
+  title: string;
+  statusLabel: string;
+  recordCount: number;
+  heading: string;
+  subtitle: string;
+  table: string;
+}) => {
   const generatedAt = new Date().toLocaleString();
-  const rows = buildAssetRows(assets);
 
   return `
     <!DOCTYPE html>
@@ -77,7 +85,6 @@ export const buildAssetExportHtml = ({
             font-size: 22px;
             font-weight: 800;
             color: ${PRIMARY_BLUE};
-            letter-spacing: 0.4px;
           }
           .subtitle {
             margin-top: 6px;
@@ -129,48 +136,132 @@ export const buildAssetExportHtml = ({
       <body>
         <div class="header">
           <div class="brand">Amrod ERP</div>
-          <motion-div class="subtitle">EmbroideryTech — Government Asset Register Export</motion-div>
+          <div class="subtitle">${escapeHtml(subtitle)}</div>
           <div class="meta">
             <span><strong>Report:</strong> ${escapeHtml(title)}</span>
-            &nbsp;·&nbsp;
+            &nbsp;-&nbsp;
             <span><strong>Status:</strong> ${escapeHtml(statusLabel)}</span>
-            &nbsp;·&nbsp;
-            <span><strong>Records:</strong> ${assets.length}</span>
-            &nbsp;·&nbsp;
+            &nbsp;-&nbsp;
+            <span><strong>Records:</strong> ${recordCount}</span>
+            &nbsp;-&nbsp;
             <span><strong>Generated:</strong> ${escapeHtml(generatedAt)}</span>
-          </motion-div>
-        </motion-div>
+          </div>
+        </div>
 
-        <h2>Asset Register</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Asset Name</th>
-              <th>Asset No</th>
-              <th>EPC</th>
-              <th>Department</th>
-              <th>Status</th>
-              <th>Serial No</th>
-              <th>Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows || '<tr><td colspan="7">No asset records included.</td></tr>'}
-          </tbody>
-        </table>
+        <h2>${escapeHtml(heading)}</h2>
+        ${table}
 
         <div class="footer">
-          Amrod Digital Asset Tracking System · Administrative export · ${escapeHtml(generatedAt)}
-        </motion-div>
+          Amrod Digital Asset Tracking System - Administrative export - ${escapeHtml(generatedAt)}
+        </div>
       </body>
     </html>
-  `
-    .replace(/<motion-div/g, '<div')
-    .replace(/<\/motion-div>/g, '</div>');
+  `;
 };
 
-export const exportAssetsToPdf = async (options: AssetPdfExportOptions) => {
-  const html = buildAssetExportHtml(options);
+const buildAssetRows = (assets: AssetRecord[]) =>
+  assets
+    .map(
+      asset => `
+        <tr>
+          <td>${escapeHtml(getAssetDisplayName(asset))}</td>
+          <td>${escapeHtml(asset.assetNumber)}</td>
+          <td>${escapeHtml(asset.epc || asset.epcKey)}</td>
+          <td>${escapeHtml(asset.department || asset.category)}</td>
+          <td>${escapeHtml(asset.status)}</td>
+          <td>${escapeHtml(asset.serialNumber)}</td>
+          <td>${escapeHtml(formatDate(asset.createdAt))}</td>
+          <td>${escapeHtml(formatDate(asset.updatedAt))}</td>
+          <td>${escapeHtml(asset.location || asset.department || asset.category)}</td>
+          <td>${escapeHtml(asset.verificationStatus)}</td>
+        </tr>
+      `,
+    )
+    .join('');
+
+const buildLifecycleRows = (records: AssignmentLifecycleExportRecord[]) =>
+  records
+    .map(
+      record => `
+        <tr>
+          <td>${escapeHtml(record.assetName)}</td>
+          <td>${escapeHtml(record.assetNumber)}</td>
+          <td>${escapeHtml(record.initialSection)}</td>
+          <td>${escapeHtml(record.currentSection)}</td>
+          <td>${escapeHtml(record.assignedBy)}</td>
+          <td>${escapeHtml(formatDate(record.assignmentDate))}</td>
+          <td>${escapeHtml(formatDate(record.lastUpdated))}</td>
+        </tr>
+      `,
+    )
+    .join('');
+
+export const buildAssetExportHtml = ({
+  title,
+  statusLabel,
+  assets,
+}: AssetPdfExportOptions) =>
+  buildDocumentShell({
+    title,
+    statusLabel,
+    recordCount: assets.length,
+    heading: 'Asset Register',
+    subtitle: 'EmbroideryTech - Government Asset Register Export',
+    table: `
+      <table>
+        <thead>
+          <tr>
+            <th>Asset Name</th>
+            <th>Asset No</th>
+            <th>EPC</th>
+            <th>Department</th>
+            <th>Status</th>
+            <th>Serial No</th>
+            <th>Created</th>
+            <th>Updated</th>
+            <th>Current Location</th>
+            <th>Verification Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${buildAssetRows(assets) || '<tr><td colspan="10">No asset records included.</td></tr>'}
+        </tbody>
+      </table>
+    `,
+  });
+
+export const buildLifecycleExportHtml = ({
+  title,
+  statusLabel,
+  records,
+}: LifecyclePdfExportOptions) =>
+  buildDocumentShell({
+    title,
+    statusLabel,
+    recordCount: records.length,
+    heading: 'Assignment Lifecycle',
+    subtitle: 'EmbroideryTech - Asset Assignment Lifecycle Export',
+    table: `
+      <table>
+        <thead>
+          <tr>
+            <th>Asset Name</th>
+            <th>Asset No</th>
+            <th>Initial Section</th>
+            <th>Current Section</th>
+            <th>Assigned By</th>
+            <th>Assignment Date</th>
+            <th>Last Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${buildLifecycleRows(records) || '<tr><td colspan="7">No lifecycle records included.</td></tr>'}
+        </tbody>
+      </table>
+    `,
+  });
+
+const sharePdf = async (html: string, dialogTitle: string) => {
   const file = await Print.printToFileAsync({ html, base64: false });
 
   const canShare = await Sharing.isAvailableAsync();
@@ -180,9 +271,21 @@ export const exportAssetsToPdf = async (options: AssetPdfExportOptions) => {
 
   await Sharing.shareAsync(file.uri, {
     mimeType: 'application/pdf',
-    dialogTitle: `${options.title} — ${options.statusLabel}`,
+    dialogTitle,
     UTI: 'com.adobe.pdf',
   });
 
   return file.uri;
 };
+
+export const exportAssetsToPdf = async (options: AssetPdfExportOptions) =>
+  sharePdf(
+    buildAssetExportHtml(options),
+    `${options.title} - ${options.statusLabel}`,
+  );
+
+export const exportLifecycleToPdf = async (options: LifecyclePdfExportOptions) =>
+  sharePdf(
+    buildLifecycleExportHtml(options),
+    `${options.title} - ${options.statusLabel}`,
+  );

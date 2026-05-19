@@ -3,6 +3,7 @@
 const mongoose = require('mongoose');
 const Asset = require('../models/Asset');
 const AssetTagMapping = require('../models/AssetTagMapping');
+const User = require('../models/User');
 
 const EPC_REGEX = /^[A-Z0-9]{12,24}$/;
 const STATUS_VALUES = ['Healthy', 'Repairable', 'Beyond Repair'];
@@ -33,6 +34,7 @@ const mapAssetResponse = asset => ({
   location: asset.location || null,
   assignedTo: asset.assignedTo || null,
   assignmentInformation: asset.assignmentInformation || null,
+  assignmentLifecycleHistory: asset.assignmentLifecycleHistory || [],
   verificationHistory: asset.verificationHistory || [],
   createdAt: asset.createdAt,
   updatedAt: asset.updatedAt,
@@ -206,18 +208,29 @@ const getAllAssets = async (filters = {}) => {
   return assets.map(mapAssetResponse);
 };
 
-const updateAsset = async (assetId, payload) => {
+const updateAsset = async (assetId, payload = {}) => {
   if (!mongoose.Types.ObjectId.isValid(assetId)) {
     throw createServiceError('Invalid asset id', 400);
   }
 
   const updates = {};
+  const asset = await Asset.findById(assetId);
+
+  if (!asset) {
+    throw createServiceError('Asset not found', 404);
+  }
 
   if (payload.department !== undefined) {
     const dept = trimString(payload.department);
     if (!dept) {
       throw createServiceError('department cannot be empty', 400);
     }
+
+    const existingDepartments = await getAvailableDepartments();
+    if (!existingDepartments.includes(dept)) {
+      throw createServiceError('department must already exist in the system', 400);
+    }
+
     updates.category = dept;
   }
 
@@ -242,15 +255,27 @@ const updateAsset = async (assetId, payload) => {
     throw createServiceError('No valid fields to update', 400);
   }
 
-  const asset = await Asset.findByIdAndUpdate(
-    assetId,
-    { $set: updates },
-    { new: true, runValidators: true },
-  );
+  const previousDepartment = trimString(asset.category);
+  const nextDepartment = trimString(updates.category);
+  if (nextDepartment && nextDepartment !== previousDepartment) {
+    asset.assignmentLifecycleHistory = asset.assignmentLifecycleHistory || [];
+    asset.assignmentLifecycleHistory.push({
+      fromSection: previousDepartment || undefined,
+      toSection: nextDepartment,
+      assignedAt: new Date(),
+      assignedBy: payload.userId,
+      source: payload.assignmentSource || 'department_assignment',
+    });
 
-  if (!asset) {
-    throw createServiceError('Asset not found', 404);
+    asset.assignmentInformation = {
+      assignedAt: new Date(),
+      assignedBy: payload.userId,
+      source: payload.assignmentSource || 'department_assignment',
+    };
   }
+
+  Object.assign(asset, updates);
+  await asset.save();
 
   return mapAssetResponse(asset);
 };
@@ -292,6 +317,60 @@ const getAssetSummary = async () => {
     Repairable: repairable,
     'Beyond Repair': beyondRepair,
   };
+};
+
+const getAvailableDepartments = async () => {
+  const [assetDepartments, userDepartments] = await Promise.all([
+    Asset.distinct('category', { category: { $exists: true, $nin: [null, ''] } }),
+    User.distinct('department', { department: { $exists: true, $nin: [null, ''] } }),
+  ]);
+
+  return Array.from(new Set([...assetDepartments, ...userDepartments]
+    .map(trimString)
+    .filter(Boolean)))
+    .sort((left, right) => left.localeCompare(right));
+};
+
+const getAssignmentLifecycle = async () => {
+  const assets = await Asset.find({}).sort({ updatedAt: -1 });
+
+  const lifecycle = assets.flatMap(asset => {
+    const history = Array.isArray(asset.assignmentLifecycleHistory)
+      ? asset.assignmentLifecycleHistory
+      : [];
+
+    if (history.length === 0) {
+      return [{
+        _id: String(asset._id),
+        assetId: String(asset._id),
+        assetName: asset.assetName,
+        assetNumber: asset.assetNumber,
+        initialSection: asset.category || 'Unknown',
+        currentSection: asset.category || asset.location || 'Unknown',
+        assignedBy: asset.assignmentInformation?.assignedBy ? 'System' : 'Unknown',
+        assignmentDate: asset.assignmentInformation?.assignedAt || asset.createdAt,
+        lastUpdated: asset.updatedAt,
+      }];
+    }
+
+    return history.map((entry, index) => ({
+      _id: `${asset._id}-${entry._id || index}`,
+      assetId: String(asset._id),
+      assetName: asset.assetName,
+      assetNumber: asset.assetNumber,
+      initialSection: entry.fromSection || 'Unassigned',
+      currentSection: entry.toSection || asset.category || 'Unknown',
+      assignedBy: entry.assignedBy ? 'System' : 'Unknown',
+      assignmentDate: entry.assignedAt || asset.updatedAt,
+      lastUpdated: asset.updatedAt,
+    })).sort((left, right) =>
+      new Date(right.assignmentDate).getTime() - new Date(left.assignmentDate).getTime(),
+    );
+  });
+
+  return lifecycle.sort((left, right) =>
+    new Date(right.assignmentDate).getTime() - new Date(left.assignmentDate).getTime(),
+  );
 };
 
 const verifyRoomInventory = async ({ location, epcs, userId }) => {
@@ -396,6 +475,8 @@ module.exports = {
   getAssetByEPC,
   getAllAssets,
   getAssetSummary,
+  getAssignmentLifecycle,
+  getAvailableDepartments,
   updateAsset,
   verifyRoomInventory,
 };

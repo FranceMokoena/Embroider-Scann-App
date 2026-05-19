@@ -91,7 +91,10 @@ const deleteAsset = async (req, res) => {
 
 const updateAsset = async (req, res) => {
   try {
-    const asset = await assetService.updateAsset(req.params.id, req.body);
+    const asset = await assetService.updateAsset(req.params.id, {
+      ...req.body,
+      userId: req.userId,
+    });
 
     return res.status(200).json({
       success: true,
@@ -103,11 +106,39 @@ const updateAsset = async (req, res) => {
   }
 };
 
+const getAssignmentLifecycle = async (req, res) => {
+  try {
+    const lifecycle = await assetService.getAssignmentLifecycle();
+
+    return res.status(200).json({
+      success: true,
+      lifecycle,
+    });
+  } catch (error) {
+    return sendAssetError(res, error, 'Failed to load assignment lifecycle');
+  }
+};
+
+const getDepartmentOptions = async (_req, res) => {
+  try {
+    const departments = await assetService.getAvailableDepartments();
+
+    return res.status(200).json({
+      success: true,
+      departments,
+    });
+  } catch (error) {
+    return sendAssetError(res, error, 'Failed to load department options');
+  }
+};
+
 module.exports = {
   createBulkAssets,
   createAsset,
   deleteAsset,
+  getDepartmentOptions,
   getAssetSummary,
+  getAssignmentLifecycle,
   listAssets,
   updateAsset,
 };
