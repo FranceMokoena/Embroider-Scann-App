@@ -83,6 +83,8 @@ const mapAssetResponse = asset => ({
       changedAt: entry.changedAt,
       changedBy: getAssignedByDisplayName(entry.changedBy),
       source: entry.source || null,
+      reason: entry.reason || null,
+      batchId: entry.batchId || null,
     }))
     : [],
   assignmentLifecycleHistory: asset.assignmentLifecycleHistory || [],
@@ -554,6 +556,8 @@ const getAssignmentLifecycle = async () => {
       assignedBy: entry.assignedBy ? 'System' : 'Unknown',
       assignmentDate: entry.assignedAt || asset.updatedAt,
       lastUpdated: asset.updatedAt,
+      transferType: entry.transferType,
+      reason: entry.reason,
     })).sort((left, right) =>
       new Date(right.assignmentDate).getTime() - new Date(left.assignmentDate).getTime(),
     );

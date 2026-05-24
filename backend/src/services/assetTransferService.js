@@ -9,6 +9,7 @@ const { resolveAssetSection } = require("../utils/resolveAssetSection");
 const MAX_BATCH_SIZE = 100;
 const DEFAULT_TRANSFER_TYPE = "reassignment";
 const LIFECYCLE_SOURCE = "asset_rotation";
+const STATUS_VALUES = ["Healthy", "Repairable", "Beyond Repair"];
 
 const createServiceError = (message, statusCode) => {
   const error = new Error(message);
@@ -24,6 +25,27 @@ const escapeRegex = (value) =>
 const normalizeTransferType = (value) => {
   const normalized = trimString(value);
   return normalized || DEFAULT_TRANSFER_TYPE;
+};
+
+const normalizeNewStatus = (value) => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const normalized = trimString(value);
+
+  if (!normalized) {
+    throw createServiceError("newStatus cannot be empty", 400);
+  }
+
+  if (!STATUS_VALUES.includes(normalized)) {
+    throw createServiceError(
+      `newStatus must be one of: ${STATUS_VALUES.join(", ")}`,
+      400,
+    );
+  }
+
+  return normalized;
 };
 
 /**
@@ -113,6 +135,38 @@ const buildTransferEntry = ({
   batchId,
 });
 
+const applyStatusUpdateOnTransfer = ({
+  asset,
+  newStatus,
+  changedBy,
+  reason,
+  batchId,
+}) => {
+  if (!newStatus) {
+    return false;
+  }
+
+  const previousStatus = trimString(asset.status);
+
+  if (previousStatus === newStatus) {
+    return false;
+  }
+
+  asset.statusHistory = asset.statusHistory || [];
+  asset.statusHistory.push({
+    previousStatus: previousStatus || undefined,
+    newStatus,
+    changedAt: new Date(),
+    changedBy,
+    source: `${LIFECYCLE_SOURCE}_status_update`,
+    reason: trimString(reason) || undefined,
+    batchId,
+  });
+
+  asset.status = newStatus;
+  return true;
+};
+
 /**
  * Centralized asset section transfer orchestration.
  *
@@ -121,6 +175,7 @@ const buildTransferEntry = ({
  *   toSection: string,
  *   assignedBy?: string,
  *   reason?: string,
+ *   newStatus?: string,
  *   transferType?: string,
  *   batchId?: string,
  *   assignmentSource?: string,
@@ -131,6 +186,7 @@ const transferAssets = async ({
   toSection,
   assignedBy,
   reason,
+  newStatus,
   transferType,
   batchId: providedBatchId,
   assignmentSource,
@@ -141,6 +197,7 @@ const transferAssets = async ({
   }
 
   const canonicalToSection = await assertTargetSectionExists(normalizedTarget);
+  const normalizedNewStatus = normalizeNewStatus(newStatus);
   const normalizedIds = normalizeAssetIds(assetIds);
   const batchId =
     trimString(providedBatchId) || crypto.randomUUID();
@@ -153,6 +210,7 @@ const transferAssets = async ({
   console.info("[assetTransferService] transfer batch started", {
     batchId,
     toSection: canonicalToSection,
+    newStatus: normalizedNewStatus || undefined,
     requested: normalizedIds.length,
     transferType: normalizedTransferType,
   });
@@ -172,12 +230,15 @@ const transferAssets = async ({
 
       const fromSection = resolveAssetSection(asset);
       const fromNormalized = fromSection ? trimString(fromSection) : null;
+      const previousStatus = trimString(asset.status) || null;
 
       if (fromNormalized === canonicalToSection) {
         skipped.push({
           assetId: String(asset._id),
           fromSection: fromNormalized,
           toSection: canonicalToSection,
+          fromStatus: previousStatus,
+          toStatus: normalizedNewStatus || previousStatus,
           reason: "already_in_target_section",
         });
         continue;
@@ -214,6 +275,14 @@ const transferAssets = async ({
         asset.updatedBy = assignedBy;
       }
 
+      const statusChanged = applyStatusUpdateOnTransfer({
+        asset,
+        newStatus: normalizedNewStatus,
+        changedBy: assignedBy,
+        reason,
+        batchId,
+      });
+
       await asset.save();
 
       const { mapAssetResponse } = require("./assetService");
@@ -221,6 +290,9 @@ const transferAssets = async ({
         assetId: String(asset._id),
         fromSection: fromNormalized,
         toSection: canonicalToSection,
+        fromStatus: previousStatus,
+        toStatus: trimString(asset.status) || null,
+        statusChanged,
         asset: mapAssetResponse(asset),
       });
     } catch (error) {
@@ -253,6 +325,7 @@ const transferAssets = async ({
     success: errors.length === 0,
     batchId,
     toSection: canonicalToSection,
+    newStatus: normalizedNewStatus || undefined,
     transferType: normalizedTransferType,
     transferred,
     skipped,

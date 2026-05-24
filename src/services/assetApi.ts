@@ -43,6 +43,8 @@ export type AssetRecord = {
     changedAt?: string;
     changedBy?: string;
     source?: string;
+    reason?: string | null;
+    batchId?: string | null;
   }>;
   verificationHistory?: Array<{
     section?: string;
@@ -79,6 +81,7 @@ export type PatchAssetPayload = {
 export type TransferAssetsPayload = {
   assetIds: string[];
   toSection: string;
+  newStatus?: string;
   reason?: string;
   transferType?: string;
   batchId?: string;
@@ -88,6 +91,9 @@ export type TransferAssetsResultItem = {
   assetId: string;
   fromSection?: string | null;
   toSection: string;
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  statusChanged?: boolean;
   asset?: AssetRecord;
 };
 
@@ -96,12 +102,15 @@ export type TransferAssetsResponse = {
   message?: string;
   batchId: string;
   toSection: string;
+  newStatus?: string;
   transferType?: string;
   transferred: TransferAssetsResultItem[];
   skipped: Array<{
     assetId: string;
     fromSection?: string | null;
     toSection: string;
+    fromStatus?: string | null;
+    toStatus?: string | null;
     reason?: string;
   }>;
   errors: Array<{
@@ -160,6 +169,9 @@ export const transferAssets = async (payload: TransferAssetsPayload) => {
 
   response.transferred.forEach(item => {
     if (item.assetId) {
+      if (item.statusChanged || (payload.newStatus && item.asset?.status === payload.newStatus)) {
+        notifyAssetStatusChanged(item.assetId);
+      }
       notifyAssetUpdated(item.assetId);
     }
   });

@@ -17,12 +17,13 @@ const sendTransferError = (res, error, fallbackMessage) => {
 
 const createAssetTransfer = async (req, res) => {
   try {
-    const { assetIds, toSection, reason, transferType, batchId } = req.body || {};
+    const { assetIds, toSection, newStatus, reason, transferType, batchId } = req.body || {};
 
     const result = await assetTransferService.transferAssets({
       assetIds,
       toSection,
       assignedBy: req.userId,
+      newStatus,
       reason,
       transferType,
       batchId,
@@ -39,6 +40,7 @@ const createAssetTransfer = async (req, res) => {
           : "No assets were transferred",
       batchId: result.batchId,
       toSection: result.toSection,
+      newStatus: result.newStatus,
       transferType: result.transferType,
       transferred: result.transferred,
       skipped: result.skipped,

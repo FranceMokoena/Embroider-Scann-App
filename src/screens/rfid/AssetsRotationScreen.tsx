@@ -32,12 +32,15 @@ import {
 } from '../../services/assetApi';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
 import { getVerificationContext } from '../../utils/verificationSemantics';
+import { exportTransferHistoryToPdf } from '../../utils/assetPdfExport';
 import { useSectionAwareRefresh } from './hooks/useSectionAwareRefresh';
 
 const dash = '-';
 const allSectionsValue = '__all_sections__';
+const keepCurrentStatusValue = '__keep_current_status__';
 const previewLimit = 8;
 const historyLimit = 40;
+const statusOptions = ['Healthy', 'Repairable', 'Beyond Repair'];
 
 const normalizeText = (value?: string | null) =>
   typeof value === 'string' ? value.trim() : '';
@@ -55,6 +58,12 @@ const getAssetSection = (asset: AssetRecord) =>
 
 const getAssetEpc = (asset: AssetRecord) =>
   normalizeText(asset.epc) || normalizeText(asset.epcKey) || dash;
+
+const getAssetStatus = (asset: AssetRecord) =>
+  normalizeText(asset.status) || dash;
+
+const isValidStatusOption = (value: string) =>
+  statusOptions.includes(value);
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return dash;
@@ -135,11 +144,13 @@ export default function AssetsRotationScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [isExportingHistory, setIsExportingHistory] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sectionFilter, setSectionFilter] = useState(allSectionsValue);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [targetSection, setTargetSection] = useState('');
+  const [newStatus, setNewStatus] = useState('');
   const [transferReason, setTransferReason] = useState('');
 
   const [confirmationVisible, setConfirmationVisible] = useState(false);
@@ -287,6 +298,10 @@ export default function AssetsRotationScreen({ navigation }: any) {
     [sections, targetSection],
   );
 
+  const normalizedNewStatus = normalizeText(newStatus);
+  const newStatusIsValid =
+    !normalizedNewStatus || isValidStatusOption(normalizedNewStatus);
+
   const selectedAllAlreadyInTarget = useMemo(() => {
     const normalizedTarget = normalizeSectionKey(targetSection);
 
@@ -301,6 +316,7 @@ export default function AssetsRotationScreen({ navigation }: any) {
     selectedAssets.length > 0 &&
     Boolean(targetSection.trim()) &&
     targetSectionIsRegistered &&
+    newStatusIsValid &&
     !selectedAllAlreadyInTarget;
 
   const handleToggleAsset = useCallback((asset: AssetRecord) => {
@@ -334,6 +350,7 @@ export default function AssetsRotationScreen({ navigation }: any) {
   const validateTransfer = useCallback(() => {
     const normalizedTarget = targetSection.trim();
     const normalizedReason = transferReason.trim();
+    const normalizedStatus = newStatus.trim();
 
     if (selectedAssets.length === 0) {
       Alert.alert('Select Assets', 'Please select at least one asset.');
@@ -353,6 +370,14 @@ export default function AssetsRotationScreen({ navigation }: any) {
       return null;
     }
 
+    if (normalizedStatus && !isValidStatusOption(normalizedStatus)) {
+      Alert.alert(
+        'Invalid Status',
+        'Choose Healthy, Repairable, Beyond Repair, or keep the current status.',
+      );
+      return null;
+    }
+
     const everyAssetAlreadyThere = selectedAssets.every(
       asset => normalizeSectionKey(getAssetSection(asset)) === normalizeSectionKey(normalizedTarget),
     );
@@ -367,10 +392,11 @@ export default function AssetsRotationScreen({ navigation }: any) {
 
     return {
       assetIds: selectedAssets.map(asset => getAssetId(asset)).filter(Boolean),
+      newStatus: normalizedStatus || undefined,
       reason: normalizedReason,
       toSection: normalizedTarget,
     };
-  }, [sections, selectedAssets, targetSection, transferReason]);
+  }, [newStatus, sections, selectedAssets, targetSection, transferReason]);
 
   const handleOpenPreview = useCallback(() => {
     const validated = validateTransfer();
@@ -380,6 +406,7 @@ export default function AssetsRotationScreen({ navigation }: any) {
     }
 
     setTargetSection(validated.toSection);
+    setNewStatus(validated.newStatus || '');
     setTransferReason(validated.reason);
     setConfirmationVisible(true);
   }, [validateTransfer]);
@@ -402,6 +429,7 @@ export default function AssetsRotationScreen({ navigation }: any) {
       const result = await transferAssets({
         assetIds: validated.assetIds,
         toSection: validated.toSection,
+        newStatus: validated.newStatus,
         reason: validated.reason,
         transferType: 'rotation',
       });
@@ -423,6 +451,7 @@ export default function AssetsRotationScreen({ navigation }: any) {
         );
       } else {
         setSelectedAssetIds([]);
+        setNewStatus('');
         setTransferReason('');
         setTargetSection('');
       }
@@ -452,6 +481,32 @@ export default function AssetsRotationScreen({ navigation }: any) {
       setIsTransferring(false);
     }
   }, [isTransferring, loadData, validateTransfer]);
+
+  const handleExportTransferHistory = useCallback(async () => {
+    if (historyPreview.length === 0 || isExportingHistory) {
+      return;
+    }
+
+    setIsExportingHistory(true);
+
+    try {
+      await exportTransferHistoryToPdf({
+        title: 'Asset Rotation Transfer History',
+        statusLabel:
+          history.length > historyLimit
+            ? `Latest ${historyPreview.length} of ${history.length}`
+            : 'Current transfer history',
+        records: historyPreview,
+      });
+    } catch (error) {
+      Alert.alert(
+        'Export Failed',
+        error instanceof Error ? error.message : 'Unable to export transfer history.',
+      );
+    } finally {
+      setIsExportingHistory(false);
+    }
+  }, [history.length, historyPreview, isExportingHistory]);
 
   const renderVerificationBadge = useCallback((asset: AssetRecord) => {
     const context = getVerificationContext(asset);
@@ -531,9 +586,6 @@ export default function AssetsRotationScreen({ navigation }: any) {
         </Text>
         <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cell, styles.historySectionCell]}>
           {item.toSection || dash}
-        </Text>
-        <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cell, styles.historyByCell]}>
-          {item.assignedBy || dash}
         </Text>
         <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cell, styles.historyDateCell]}>
           {formatDateTime(getLifecycleDate(item))}
@@ -767,6 +819,30 @@ export default function AssetsRotationScreen({ navigation }: any) {
             </Picker>
           </View>
 
+          <Text style={styles.fieldLabel}>New Status</Text>
+          <View style={styles.pickerShell}>
+            <Picker
+              selectedValue={newStatus || keepCurrentStatusValue}
+              onValueChange={value => {
+                const selectedValue = String(value);
+                setNewStatus(
+                  selectedValue === keepCurrentStatusValue ? '' : selectedValue,
+                );
+              }}
+              style={styles.picker}
+              itemStyle={styles.pickerItem}
+              dropdownIconColor="#334155"
+            >
+              <Picker.Item
+                label="Keep Current Status"
+                value={keepCurrentStatusValue}
+              />
+              {statusOptions.map(status => (
+                <Picker.Item key={status} label={status} value={status} />
+              ))}
+            </Picker>
+          </View>
+
           <Text style={styles.fieldLabel}>Reason</Text>
           <TextInput
             style={styles.reasonInput}
@@ -815,9 +891,14 @@ export default function AssetsRotationScreen({ navigation }: any) {
                   </Text>
                 </View>
 
-                <Text numberOfLines={1} style={styles.previewMove}>
-                  {getAssetSection(asset)} {'->'} {targetSection || dash}
-                </Text>
+                <View style={styles.previewState}>
+                  <Text numberOfLines={1} style={styles.previewMove}>
+                    Section: {getAssetSection(asset)} {'->'} {targetSection || dash}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.previewStatus}>
+                    Status: {getAssetStatus(asset)} {'->'} {newStatus || getAssetStatus(asset)}
+                  </Text>
+                </View>
               </View>
             ))
           )}
@@ -875,11 +956,30 @@ export default function AssetsRotationScreen({ navigation }: any) {
               <Text style={styles.panelTitle}>Transfer History</Text>
             </View>
 
-            {history.length > historyLimit ? (
-              <Text style={styles.capText}>
-                Latest {historyLimit} of {history.length}
-              </Text>
-            ) : null}
+            <View style={styles.tableActions}>
+              {history.length > historyLimit ? (
+                <Text style={styles.capText}>
+                  Latest {historyLimit} of {history.length}
+                </Text>
+              ) : null}
+
+              <TouchableOpacity
+                style={[
+                  styles.exportIconButton,
+                  (historyPreview.length === 0 || isExportingHistory) && styles.buttonDisabled,
+                ]}
+                onPress={handleExportTransferHistory}
+                disabled={historyPreview.length === 0 || isExportingHistory}
+                activeOpacity={0.85}
+                accessibilityLabel="Export transfer history PDF"
+              >
+                {isExportingHistory ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Ionicons name="download-outline" size={16} color="#ffffff" />
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
 
           {historyLoading ? (
@@ -906,9 +1006,6 @@ export default function AssetsRotationScreen({ navigation }: any) {
                   </Text>
                   <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.historySectionCell]}>
                     To
-                  </Text>
-                  <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.historyByCell]}>
-                    By
                   </Text>
                   <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.historyDateCell]}>
                     Date
@@ -979,6 +1076,12 @@ export default function AssetsRotationScreen({ navigation }: any) {
               <View style={styles.modalRow}>
                 <Text style={styles.modalLabel}>Target</Text>
                 <Text numberOfLines={1} style={styles.modalValue}>{targetSection || dash}</Text>
+              </View>
+              <View style={styles.modalRow}>
+                <Text style={styles.modalLabel}>New Status</Text>
+                <Text numberOfLines={1} style={styles.modalValue}>
+                  {newStatus || 'Keep Current Status'}
+                </Text>
               </View>
               <View style={styles.modalRow}>
                 <Text style={styles.modalLabel}>Reason</Text>
@@ -1333,7 +1436,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   historyTable: {
-    minWidth: 1000,
+    minWidth: 970,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#dbe2ea',
@@ -1405,16 +1508,13 @@ const styles = StyleSheet.create({
     width: 190,
   },
   historySectionCell: {
-    width: 140,
-  },
-  historyByCell: {
     width: 150,
   },
   historyDateCell: {
     width: 180,
   },
   historyReasonCell: {
-    width: 220,
+    width: 300,
     borderRightWidth: 0,
   },
   verificationBadge: {
@@ -1490,13 +1590,23 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748b',
   },
-  previewMove: {
+  previewState: {
     flex: 1,
     minWidth: 120,
+    alignItems: 'flex-end',
+  },
+  previewMove: {
     textAlign: 'right',
     fontSize: 12,
     fontWeight: '700',
     color: '#334155',
+  },
+  previewStatus: {
+    marginTop: 3,
+    textAlign: 'right',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
   },
   resultPanel: {
     marginTop: 6,
@@ -1545,6 +1655,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#7f1d1d',
+  },
+  exportIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: '#0ea5a4',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalOverlay: {
     flex: 1,

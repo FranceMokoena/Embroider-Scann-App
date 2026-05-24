@@ -21,10 +21,26 @@ export type AssignmentLifecycleExportRecord = {
   lastUpdated?: string;
 };
 
+export type TransferHistoryExportRecord = {
+  assetName?: string;
+  assetNumber?: string;
+  fromSection?: string;
+  toSection?: string;
+  assignedAt?: string;
+  lastUpdated?: string;
+  reason?: string;
+};
+
 type LifecyclePdfExportOptions = {
   title: string;
   statusLabel: string;
   records: AssignmentLifecycleExportRecord[];
+};
+
+type TransferHistoryPdfExportOptions = {
+  title: string;
+  statusLabel: string;
+  records: TransferHistoryExportRecord[];
 };
 
 type SectionsPdfExportOptions = {
@@ -389,6 +405,22 @@ const buildLifecycleRows = (records: AssignmentLifecycleExportRecord[]) =>
     )
     .join('');
 
+const buildTransferHistoryRows = (records: TransferHistoryExportRecord[]) =>
+  records
+    .map(
+      record => `
+        <tr>
+          <td>${escapeHtml(record.assetName)}</td>
+          <td>${escapeHtml(record.assetNumber)}</td>
+          <td>${escapeHtml(record.fromSection)}</td>
+          <td>${escapeHtml(record.toSection)}</td>
+          <td>${escapeHtml(formatDate(record.assignedAt || record.lastUpdated))}</td>
+          <td>${escapeHtml(record.reason)}</td>
+        </tr>
+      `,
+    )
+    .join('');
+
 export const buildAssetExportHtml = ({
   title,
   statusLabel,
@@ -585,6 +617,36 @@ export const buildLifecycleExportHtml = ({
     `,
   });
 
+export const buildTransferHistoryExportHtml = ({
+  title,
+  statusLabel,
+  records,
+}: TransferHistoryPdfExportOptions) =>
+  buildDocumentShell({
+    title,
+    statusLabel,
+    recordCount: records.length,
+    heading: 'Asset Rotation Transfer History',
+    subtitle: 'EmbroideryTech - Asset Rotation Transfer Export',
+    table: `
+      <table class="register">
+        <thead>
+          <tr>
+            <th>Asset</th>
+            <th>Asset No</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Date</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${buildTransferHistoryRows(records) || '<tr><td colspan="6">No transfer history records included.</td></tr>'}
+        </tbody>
+      </table>
+    `,
+  });
+
 const sharePdf = async (html: string, dialogTitle: string) => {
   const file = await Print.printToFileAsync({ html, base64: false });
 
@@ -611,6 +673,12 @@ export const exportAssetsToPdf = async (options: AssetPdfExportOptions) =>
 export const exportLifecycleToPdf = async (options: LifecyclePdfExportOptions) =>
   sharePdf(
     buildLifecycleExportHtml(options),
+    `${options.title} - ${options.statusLabel}`,
+  );
+
+export const exportTransferHistoryToPdf = async (options: TransferHistoryPdfExportOptions) =>
+  sharePdf(
+    buildTransferHistoryExportHtml(options),
     `${options.title} - ${options.statusLabel}`,
   );
 

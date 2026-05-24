@@ -87,6 +87,8 @@ const assetSchema = new mongoose.Schema({
     changedAt: { type: Date, default: () => new Date() },
     changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     source: { type: String, set: trimString },
+    reason: { type: String, set: trimString },
+    batchId: { type: String, set: trimString },
   }],
   updatedBy: {
     type: mongoose.Schema.Types.ObjectId,
