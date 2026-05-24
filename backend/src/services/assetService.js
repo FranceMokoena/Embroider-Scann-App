@@ -6,6 +6,8 @@ const AssetTagMapping = require('../models/AssetTagMapping');
 const TagScanLog = require('../models/TagScanLog');
 const User = require('../models/User');
 const Section = require('../models/Section');
+const { resolveAssetSection } = require('../utils/resolveAssetSection');
+const assetTransferService = require('./assetTransferService');
 
 const EPC_REGEX = /^[A-Z0-9]{12,24}$/;
 const STATUS_VALUES = ['Healthy', 'Repairable', 'Beyond Repair'];
@@ -26,11 +28,7 @@ const escapeRegex = value => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'
 
 const normalizeEpc = value => trimString(value).toUpperCase();
 
-const getAssetSection = asset =>
-  trimString(asset?.section)
-  || trimString(asset?.category)
-  || trimString(asset?.department)
-  || trimString(asset?.location);
+const getAssetSection = asset => resolveAssetSection(asset);
 
 const buildSectionFilter = section => {
   const normalizedSection = trimString(section);
@@ -284,81 +282,87 @@ const updateAsset = async (assetId, payload = {}) => {
     throw createServiceError('Invalid asset id', 400);
   }
 
-  const updates = {};
-  const asset = await Asset.findById(assetId);
+  const requestedSection = payload.section !== undefined ? payload.section : payload.department;
+  const hasSectionUpdate = requestedSection !== undefined;
+  const hasStatusUpdate = payload.status !== undefined;
 
+  if (!hasSectionUpdate && !hasStatusUpdate) {
+    throw createServiceError('No valid fields to update', 400);
+  }
+
+  if (hasSectionUpdate) {
+    const toSection = trimString(requestedSection);
+    if (!toSection) {
+      throw createServiceError('section cannot be empty', 400);
+    }
+
+    const transferResult = await assetTransferService.transferAssets({
+      assetIds: [String(assetId)],
+      toSection,
+      assignedBy: payload.userId,
+      reason: payload.reason,
+      transferType: payload.transferType || 'reassignment',
+      batchId: payload.batchId,
+      assignmentSource: payload.assignmentSource || 'department_assignment',
+    });
+
+    const transferError = transferResult.errors.find(
+      entry => String(entry.assetId) === String(assetId),
+    );
+
+    if (transferError) {
+      throw createServiceError(transferError.message, transferError.statusCode || 400);
+    }
+
+    if (!hasStatusUpdate) {
+      const transferredEntry = transferResult.transferred.find(
+        entry => String(entry.assetId) === String(assetId),
+      );
+
+      if (transferredEntry?.asset) {
+        return transferredEntry.asset;
+      }
+
+      const asset = await Asset.findById(assetId);
+      if (!asset) {
+        throw createServiceError('Asset not found', 404);
+      }
+
+      return mapAssetResponse(asset);
+    }
+  }
+
+  const asset = await Asset.findById(assetId);
   if (!asset) {
     throw createServiceError('Asset not found', 404);
   }
 
-  const requestedSection = payload.section !== undefined ? payload.section : payload.department;
-  if (requestedSection !== undefined) {
-    const dept = trimString(requestedSection);
-    if (!dept) {
-      throw createServiceError('section cannot be empty', 400);
-    }
-
-    const existingSections = await getAvailableSections();
-    if (!existingSections.includes(dept)) {
-      throw createServiceError('section must already exist in the system', 400);
-    }
-
-    updates.section = dept;
-    updates.category = undefined;
-    updates.location = undefined;
-  }
-
-  if (payload.status !== undefined) {
-    const status = normalizeOptionalString(payload.status);
-    if (status && !STATUS_VALUES.includes(status)) {
-      throw createServiceError(`status must be one of: ${STATUS_VALUES.join(', ')}`, 400);
-    }
-    if (status) {
-      updates.status = status;
-    }
-  }
-
-  if (Object.keys(updates).length === 0) {
+  if (!hasStatusUpdate) {
     throw createServiceError('No valid fields to update', 400);
   }
 
-  const previousDepartment = getAssetSection(asset);
-  const nextDepartment = trimString(updates.section);
-  if (nextDepartment && nextDepartment !== previousDepartment) {
-    asset.assignmentLifecycleHistory = asset.assignmentLifecycleHistory || [];
-    asset.assignmentLifecycleHistory.push({
-      fromSection: previousDepartment || undefined,
-      toSection: nextDepartment,
-      assignedAt: new Date(),
-      assignedBy: payload.userId,
-      source: payload.assignmentSource || 'department_assignment',
-    });
-
-    asset.assignmentInformation = {
-      assignedAt: new Date(),
-      assignedBy: payload.userId,
-      source: payload.assignmentSource || 'department_assignment',
-    };
+  const status = normalizeOptionalString(payload.status);
+  if (status && !STATUS_VALUES.includes(status)) {
+    throw createServiceError(`status must be one of: ${STATUS_VALUES.join(', ')}`, 400);
   }
 
-  if (updates.status !== undefined && updates.status !== asset.status) {
+  if (status && status !== asset.status) {
     asset.statusHistory = asset.statusHistory || [];
     asset.statusHistory.push({
       previousStatus: asset.status || undefined,
-      newStatus: updates.status,
+      newStatus: status,
       changedAt: new Date(),
       changedBy: payload.userId,
       source: payload.assignmentSource || 'status_update',
     });
+    asset.status = status;
   }
 
   if (payload.userId) {
     asset.updatedBy = payload.userId;
   }
 
-  Object.assign(asset, updates);
   await asset.save();
-
   return mapAssetResponse(asset);
 };
 

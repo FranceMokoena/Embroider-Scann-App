@@ -19,6 +19,7 @@ import { Alert } from 'react-native';
 import { fetchSectionsSummary, createSection, SectionSummary } from '../../services/assetApi';
 import { exportSectionsToPdf } from '../../utils/assetPdfExport';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
+import { useSectionAwareRefresh } from './hooks/useSectionAwareRefresh';
 
 const formatDateTime = (value?: string | null) => {
   if (!value) {
@@ -56,6 +57,10 @@ export default function SectionsScreen({ navigation }: any) {
       setLoading(false);
     })();
   }, [loadSections]);
+
+  useSectionAwareRefresh({
+    onRefresh: loadSections,
+  });
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -117,8 +122,8 @@ export default function SectionsScreen({ navigation }: any) {
           </TouchableOpacity>
 
           <View>
-            <Text style={styles.title}>Sections</Text>
-            <Text style={styles.subtitle}>All organizational sections</Text>
+            <Text style={styles.title}>All Sections</Text>
+            <Text style={styles.subtitle}>Organizational sections</Text>
           </View>
         </View>
 
@@ -129,7 +134,7 @@ export default function SectionsScreen({ navigation }: any) {
                 const data = sections.length > 0 ? sections : await fetchSectionsSummary();
                 await exportSectionsToPdf({
                   title: 'Sections Export',
-                  statusLabel: 'All Sections',
+                  statusLabel: 'All Organizational Sections',
                   sections: data,
                 });
               } catch (err: any) {
@@ -153,7 +158,7 @@ export default function SectionsScreen({ navigation }: any) {
 
           <View style={styles.countWrap}>
             <Text style={styles.countValue}>{sections.length}</Text>
-            <Text style={styles.countLabel}>Sections</Text>
+            <Text style={styles.countLabel}>All Sections</Text>
           </View>
         </View>
       </View>

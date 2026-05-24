@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiRequest } from '../../config/api';
 import { normalizeEpc } from '../../rfid/chainwayRfid';
 import { fetchDepartmentOptions, getAssetId, patchAssetById } from '../../services/assetApi';
+import { useSectionAwareRefresh } from './hooks/useSectionAwareRefresh';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
 import { exportAssetsToPdf, exportLifecycleToPdf } from '../../utils/assetPdfExport';
 
@@ -211,11 +212,19 @@ export default function AllAssetsScreen({ navigation }: any) {
     }
   }, []);
 
-  useEffect(() => {
-    void loadAssets();
-    void loadLifecycle();
-    void loadDepartmentOptions();
+  const refreshAllAssetViews = useCallback(async () => {
+    await loadAssets();
+    await loadLifecycle();
+    await loadDepartmentOptions();
   }, [loadAssets, loadLifecycle, loadDepartmentOptions]);
+
+  useEffect(() => {
+    void refreshAllAssetViews();
+  }, [refreshAllAssetViews]);
+
+  useSectionAwareRefresh({
+    onRefresh: refreshAllAssetViews,
+  });
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -242,6 +251,7 @@ export default function AllAssetsScreen({ navigation }: any) {
   }, [assets, filterMode, searchQuery]);
 
   const handleApplyDepartmentAssignment = async () => {
+    // TODO: Phase 7 — deprecate direct section PATCH UI.
     const targetDept = assignTargetDepartment.trim();
     if (!targetDept) {
       Alert.alert(

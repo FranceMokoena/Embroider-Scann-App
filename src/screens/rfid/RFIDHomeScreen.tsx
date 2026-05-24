@@ -457,8 +457,12 @@ export default function RFIDHomeScreen({ navigation }: any) {
       return navigation.navigate('AllAssetsScreen');
     }
 
-    if (label === 'Sections') {
+    if (label === 'All Sections' || label === 'Sections') {
       return navigation.navigate('SectionsScreen');
+    }
+
+    if (label === 'Assets Rotation') {
+      return navigation.navigate('AssetsRotationScreen');
     }
 
     if (label === 'My Profile') {
@@ -694,15 +698,14 @@ export default function RFIDHomeScreen({ navigation }: any) {
             >
             {[
               // ERP sidebar navigation items for dedicated asset status screens
-              
-              { label: 'Production', icon: 'briefcase-outline' },
+              { label: 'All Sections', icon: 'business-outline' },
+              { label: 'Assets Rotation', icon: 'rotate-outline' },
+              { label: 'Production', icon: 'archive-outline' },
               { label: 'To Repair', icon: 'construct-outline' },
               { label: 'Written Off', icon: 'close-circle-outline' },
               { label: 'Locate Asset', icon: 'locate-outline' },
               { label: 'Search Asset', icon: 'search-outline' },
               { label: 'View All Assets', icon: 'server-outline' },
-              { label: 'Sections', icon: 'business-outline' },
-              
               { label: 'My Profile', icon: 'person-circle-outline' },
             ].map(item => (
               <TouchableOpacity

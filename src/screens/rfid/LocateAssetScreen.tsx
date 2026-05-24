@@ -17,6 +17,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import CampusTrackingMap from './components/CampusTrackingMap';
 import { useCampusProximityTracker } from './hooks/useCampusProximityTracker';
 import { apiRequest } from '../../config/api';
+import { fetchAssetById, getAssetId } from '../../services/assetApi';
+import { useSectionAwareRefresh } from './hooks/useSectionAwareRefresh';
 import { normalizeEpc } from '../../rfid/chainwayRfid';
 import { useRFIDStreamController } from '../../rfid/RFIDStreamController';
 import { ERP_FORM } from '../../theme/erpFormStyles';
@@ -220,6 +222,35 @@ export default function LocateAssetScreen({ navigation }: any) {
       }
     };
   }, [controller, isTracking, ownerId, targetTrackingEpc]);
+
+  const refreshLocatedAsset = useCallback(async () => {
+    if (!locatedAsset) {
+      return;
+    }
+
+    const assetId = getAssetId(locatedAsset);
+    if (!assetId) {
+      return;
+    }
+
+    try {
+      const updatedAsset = await fetchAssetById(assetId);
+      if (!updatedAsset) {
+        return;
+      }
+
+      setLocatedAsset(updatedAsset);
+      setResultAssets(previous =>
+        previous.map(asset => (getAssetId(asset) === assetId ? updatedAsset : asset)),
+      );
+    } catch (error) {
+      console.error('Failed to refresh located asset after section transfer', error);
+    }
+  }, [locatedAsset]);
+
+  useSectionAwareRefresh({
+    onRefresh: refreshLocatedAsset,
+  });
 
   useFocusEffect(
     useCallback(() => {

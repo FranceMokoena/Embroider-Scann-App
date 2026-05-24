@@ -2,6 +2,7 @@
 
 const PDFDocument = require('pdfkit');
 const assetService = require('../services/assetService');
+const { createAssetTransfer } = require('./assetTransferController');
 
 const sendAssetError = (res, error, fallbackMessage) => {
   const statusCode = error.statusCode || 500;
@@ -225,6 +226,7 @@ module.exports = {
   createBulkAssets,
   createAsset,
   createSection,
+  createAssetTransfer,
   deleteAsset,
   getAssetById,
   getSectionOptions,

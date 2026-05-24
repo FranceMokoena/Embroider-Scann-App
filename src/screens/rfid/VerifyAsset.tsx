@@ -23,6 +23,7 @@ import { apiRequest } from '../../config/api';
 import { fetchSectionOptions } from '../../services/assetApi';
 import { notifyAssetUpdated } from '../../services/assetSync';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
+import { useSectionAwareRefresh } from './hooks/useSectionAwareRefresh';
 
 export default function VerifyAsset({ navigation }: any) {
   const { controller, snapshot } = useRFIDStreamController();
@@ -261,6 +262,72 @@ export default function VerifyAsset({ navigation }: any) {
 
     return [...matchedAssets, ...unexpectedAssets, ...missingAssets, ...unregisteredTags];
   };
+
+  const reloadSectionAuditInventory = useCallback(async () => {
+    const normalizedSection = section.trim();
+
+    if (!normalizedSection || (auditAssets.length === 0 && !auditResult)) {
+      return;
+    }
+
+    const uniqueEpcs = Array.from(
+      new Set([normalizeEpc(epcValue), ...scannedEpcs].filter(Boolean)),
+    );
+
+    if (uniqueEpcs.length === 0) {
+      return;
+    }
+
+    try {
+      const assetsResponse = await apiRequest<{ assets: any[] }>(
+        `/api/assets?section=${encodeURIComponent(normalizedSection)}`,
+        { method: 'GET' },
+      );
+
+      const expectedAssets = assetsResponse.assets || [];
+      const lookupResults = await Promise.all(
+        uniqueEpcs.map(async epc => {
+          try {
+            const result = await apiRequest<{ asset: any }>(
+              `/api/rfid/lookup/${encodeURIComponent(epc)}`,
+              { method: 'GET' },
+            );
+
+            return { epc, asset: result.asset || null };
+          } catch {
+            return { epc, asset: null };
+          }
+        }),
+      );
+
+      const rows = buildAuditRows(expectedAssets, lookupResults, normalizedSection);
+      setAuditAssets(rows);
+
+      if (auditResult) {
+        setAuditResult({
+          expectedCount: expectedAssets.length,
+          scannedCount: uniqueEpcs.length,
+          uniqueScannedCount: uniqueEpcs.length,
+          matchedAssets: rows.filter(row => row.auditResult === 'Matched'),
+          missingAssets: rows.filter(row => row.auditResult === 'Missing'),
+          unexpectedAssets: rows.filter(row => row.auditResult === 'Unexpected'),
+          unregisteredTags: rows.filter(row => row.auditResult === 'Unregistered'),
+          verificationPercentage: expectedAssets.length === 0
+            ? 0
+            : Math.round(
+                (rows.filter(row => row.auditResult === 'Matched').length / expectedAssets.length) * 100,
+              ),
+        });
+      }
+    } catch (error) {
+      console.error('Failed to refresh section audit inventory after transfer', error);
+    }
+  }, [auditAssets.length, auditResult, epcValue, scannedEpcs, section]);
+
+  useSectionAwareRefresh({
+    watchedSections: section.trim() ? [section.trim()] : [],
+    onRefresh: reloadSectionAuditInventory,
+  });
 
   const handleStartAudit = async () => {
     const normalizedSection = section.trim();

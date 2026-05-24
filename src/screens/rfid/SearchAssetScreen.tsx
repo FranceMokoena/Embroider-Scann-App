@@ -26,7 +26,7 @@ import {
   patchAssetById,
 } from '../../services/assetApi';
 import { exportAssetsToPdf } from '../../utils/assetPdfExport';
-import { subscribeToAssetSync } from '../../services/assetSync';
+import { isSectionTransferPayload, subscribeToAssetSync } from '../../services/assetSync';
 
 type SearchMode = 'epc' | 'assetNumber' | 'serialNumber' | 'assetName' | 'section';
 type SearchStatus = 'Idle' | 'Searching' | 'Listening' | 'Found';
@@ -307,10 +307,31 @@ export default function SearchAssetScreen({ navigation }: any) {
 
   useFocusEffect(
     useCallback(() => {
-      const unsubscribe = subscribeToAssetSync(async (event) => {
-        if (activeAsset && (event === 'assetDeleted' || event === 'assetUpdated' || event === 'assetStatusChanged')) {
+      const unsubscribe = subscribeToAssetSync(async (event, payload) => {
+        if (!activeAsset) {
+          return;
+        }
+
+        const activeAssetId = getAssetId(activeAsset);
+        if (!activeAssetId) {
+          return;
+        }
+
+        if (event === 'sectionTransferCompleted' && isSectionTransferPayload(payload)) {
+          if (payload.assetIds.includes(activeAssetId)) {
+            try {
+              const updatedAsset = await fetchAssetById(activeAssetId);
+              setFoundAsset(updatedAsset || null);
+            } catch (error) {
+              console.error('Failed to refresh asset after section transfer', error);
+            }
+          }
+          return;
+        }
+
+        if (event === 'assetDeleted' || event === 'assetUpdated' || event === 'assetStatusChanged') {
           try {
-            const updatedAsset = await fetchAssetById(getAssetId(activeAsset));
+            const updatedAsset = await fetchAssetById(activeAssetId);
             setFoundAsset(updatedAsset || null);
           } catch (error) {
             console.error('Failed to refresh asset after sync', error);

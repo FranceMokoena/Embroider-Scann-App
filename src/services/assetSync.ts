@@ -1,15 +1,31 @@
-type AssetSyncEventType =
+export type AssetSyncEventType =
   | 'assetUpdated'
   | 'assetDeleted'
   | 'assetAssigned'
-  | 'assetStatusChanged';
+  | 'assetStatusChanged'
+  | 'assetCreated'
+  | 'sectionTransferCompleted';
 
-type AssetSyncPayload = {
+export type AssetSyncPayload = {
   assetId?: string;
   source?: string;
 };
 
-type AssetSyncSubscriber = (event: AssetSyncEventType, payload: AssetSyncPayload) => void;
+export type SectionTransferPayload = {
+  batchId: string;
+  assetIds: string[];
+  toSection: string;
+  fromSections: string[];
+  transferredCount: number;
+  timestamp: number;
+};
+
+export type AssetSyncEventPayload = AssetSyncPayload | SectionTransferPayload;
+
+type AssetSyncSubscriber = (
+  event: AssetSyncEventType,
+  payload: AssetSyncEventPayload,
+) => void;
 
 const subscribers = new Set<AssetSyncSubscriber>();
 
@@ -20,7 +36,19 @@ export const subscribeToAssetSync = (subscriber: AssetSyncSubscriber) => {
   };
 };
 
-const publishAssetSyncEvent = (event: AssetSyncEventType, payload: AssetSyncPayload = {}) => {
+export const subscribeToSectionTransfers = (
+  handler: (payload: SectionTransferPayload) => void,
+) =>
+  subscribeToAssetSync((event, payload) => {
+    if (event === 'sectionTransferCompleted') {
+      handler(payload as SectionTransferPayload);
+    }
+  });
+
+const publishAssetSyncEvent = (
+  event: AssetSyncEventType,
+  payload: AssetSyncEventPayload = {},
+) => {
   subscribers.forEach(subscriber => {
     try {
       subscriber(event, payload);
@@ -41,3 +69,16 @@ export const notifyAssetAssigned = (assetId?: string) =>
 
 export const notifyAssetStatusChanged = (assetId?: string) =>
   publishAssetSyncEvent('assetStatusChanged', { assetId, source: 'assetApi' });
+
+export const notifyAssetCreated = (assetId?: string) =>
+  publishAssetSyncEvent('assetCreated', { assetId, source: 'assetApi' });
+
+export const notifySectionTransfer = (payload: SectionTransferPayload) => {
+  publishAssetSyncEvent('sectionTransferCompleted', payload);
+};
+
+export const isSectionTransferPayload = (
+  payload: AssetSyncEventPayload,
+): payload is SectionTransferPayload =>
+  typeof (payload as SectionTransferPayload).batchId === 'string'
+  && Array.isArray((payload as SectionTransferPayload).assetIds);

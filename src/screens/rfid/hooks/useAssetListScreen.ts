@@ -10,6 +10,7 @@ import {
   getAssetId,
 } from '../../../services/assetApi';
 import { exportAssetsToPdf } from '../../../utils/assetPdfExport';
+import { useSectionAwareRefresh } from './useSectionAwareRefresh';
 
 type UseAssetListScreenOptions = {
   statusFilter: string;
@@ -60,6 +61,10 @@ export function useAssetListScreen({
   useEffect(() => {
     void loadAssets();
   }, [loadAssets]);
+
+  useSectionAwareRefresh({
+    onRefresh: loadAssets,
+  });
 
   const onRefresh = async () => {
     setRefreshing(true);

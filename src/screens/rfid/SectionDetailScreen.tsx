@@ -23,8 +23,9 @@ import {
   getAssetDisplayName,
   SectionSummary,
 } from '../../services/assetApi';
-import { exportSectionsToPdf } from '../../utils/assetPdfExport';
+import { exportSectionDetailToPdf } from '../../utils/assetPdfExport';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
+import { useSectionAwareRefresh } from './hooks/useSectionAwareRefresh';
 
 type SectionDetailRouteParams = {
   SectionDetailScreen: {
@@ -103,6 +104,11 @@ export default function SectionDetailScreen({ navigation }: any) {
     })();
   }, [loadSectionData]);
 
+  useSectionAwareRefresh({
+    watchedSections: sectionName ? [sectionName] : [],
+    onRefresh: loadSectionData,
+  });
+
   const onRefresh = async () => {
     setRefreshing(true);
     await loadSectionData();
@@ -117,6 +123,31 @@ export default function SectionDetailScreen({ navigation }: any) {
     }),
     [assets],
   );
+
+  const handleExportSection = async () => {
+    if (!summary) {
+      Alert.alert('Export failed', 'Section data is still loading');
+      return;
+    }
+
+    try {
+      await exportSectionDetailToPdf({
+        title: `${sectionName} Section Export`,
+        sectionName,
+        summary: {
+          ...summary,
+          totalAssets: assets.length,
+          healthyAssets: statusCounts.healthy,
+          repairableAssets: statusCounts.repairable,
+          beyondRepairAssets: statusCounts.beyondRepair,
+        },
+        assets,
+      });
+    } catch (err: any) {
+      console.error('Export failed', err);
+      Alert.alert('Export failed', err?.message || 'Unable to export PDF');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -140,34 +171,20 @@ export default function SectionDetailScreen({ navigation }: any) {
           </View>
         </View>
 
-        <View style={styles.countWrap}>
-          <Text style={styles.countValue}>{assets.length}</Text>
-          <Text style={styles.countLabel}>Assets</Text>
-        </View>
-        <View style={styles.headerActions}>
+        <View style={styles.headerRight}>
           <TouchableOpacity
-            onPress={async () => {
-              try {
-                if (!summary) {
-                  Alert.alert('Export failed', 'Section data is still loading');
-                  return;
-                }
-
-                await exportSectionsToPdf({
-                  title: `${sectionName} Export`,
-                  statusLabel: sectionName,
-                  sections: [summary],
-                });
-              } catch (err: any) {
-                console.error('Export failed', err);
-                Alert.alert('Export failed', err?.message || 'Unable to export PDF');
-              }
-            }}
-            style={[styles.createButton, styles.exportButton]}
+            onPress={handleExportSection}
+            style={styles.exportIconButton}
             activeOpacity={0.85}
+            accessibilityLabel="Export section PDF"
           >
-            <Ionicons name="download-outline" size={18} color="#ffffff" />
+            <Ionicons name="download-outline" size={16} color="#ffffff" />
           </TouchableOpacity>
+
+          <View style={styles.countWrap}>
+            <Text style={styles.countValue}>{assets.length}</Text>
+            <Text style={styles.countLabel}>Assets</Text>
+          </View>
         </View>
       </View>
 
@@ -374,6 +391,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748b',
     marginTop: 2,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  exportIconButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#0ea5a4',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   countWrap: {
     alignItems: 'center',

@@ -5,6 +5,7 @@ const Asset = require('../models/Asset');
 const RFIDTag = require('../models/RFIDTag');
 const AssetTagMapping = require('../models/AssetTagMapping');
 const TagScanLog = require('../models/TagScanLog');
+const { resolveAssetSection } = require('../utils/resolveAssetSection');
 
 const ASSIGNABLE_TAG_STATUSES = ['unassigned', 'assigned'];
 const VALID_MAPPING_STATUSES = ['assigned', 'unassigned', 'unknown'];
@@ -41,10 +42,7 @@ const normalizeOptionalString = value => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
-const getAssetSection = asset =>
-  normalizeOptionalString(asset?.section)
-  || normalizeOptionalString(asset?.category)
-  || normalizeOptionalString(asset?.location);
+const getAssetSection = asset => resolveAssetSection(asset);
 
 const withSession = (query, session) => (session ? query.session(session) : query);
 

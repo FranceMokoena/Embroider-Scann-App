@@ -1,5 +1,11 @@
 import { apiRequest } from '../config/api';
-import { notifyAssetDeleted, notifyAssetStatusChanged, notifyAssetUpdated } from './assetSync';
+import {
+  notifyAssetDeleted,
+  notifyAssetStatusChanged,
+  notifyAssetUpdated,
+  notifySectionTransfer,
+  type SectionTransferPayload,
+} from './assetSync';
 
 export type AssetRecord = {
   id?: string;
@@ -16,6 +22,8 @@ export type AssetRecord = {
   serialNumber?: string | null;
   location?: string | null;
   verificationStatus?: string | null;
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
   updatedBy?: string | null;
   assignmentInformation?: {
     assignedAt?: string;
@@ -35,6 +43,13 @@ export type AssetRecord = {
     changedAt?: string;
     changedBy?: string;
     source?: string;
+  }>;
+  verificationHistory?: Array<{
+    section?: string;
+    result?: string;
+    auditId?: string;
+    verifiedAt?: string;
+    verifiedBy?: string;
   }>;
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -61,11 +76,117 @@ export type PatchAssetPayload = {
   status?: string;
 };
 
+export type TransferAssetsPayload = {
+  assetIds: string[];
+  toSection: string;
+  reason?: string;
+  transferType?: string;
+  batchId?: string;
+};
+
+export type TransferAssetsResultItem = {
+  assetId: string;
+  fromSection?: string | null;
+  toSection: string;
+  asset?: AssetRecord;
+};
+
+export type TransferAssetsResponse = {
+  success: boolean;
+  message?: string;
+  batchId: string;
+  toSection: string;
+  transferType?: string;
+  transferred: TransferAssetsResultItem[];
+  skipped: Array<{
+    assetId: string;
+    fromSection?: string | null;
+    toSection: string;
+    reason?: string;
+  }>;
+  errors: Array<{
+    assetId: string;
+    message: string;
+    statusCode?: number;
+  }>;
+  summary: {
+    requested: number;
+    transferred: number;
+    skipped: number;
+    failed: number;
+  };
+};
+
+const buildSectionTransferPayload = (input: {
+  batchId: string;
+  toSection: string;
+  transferred: TransferAssetsResultItem[];
+  skipped?: TransferAssetsResponse['skipped'];
+}): SectionTransferPayload => {
+  const fromSections = Array.from(
+    new Set(
+      [...input.transferred, ...(input.skipped || [])]
+        .map(item => (item.fromSection || '').trim())
+        .filter(Boolean),
+    ),
+  );
+
+  return {
+    batchId: input.batchId,
+    assetIds: input.transferred.map(item => String(item.assetId)),
+    toSection: input.toSection,
+    fromSections,
+    transferredCount: input.transferred.length,
+    timestamp: Date.now(),
+  };
+};
+
+export const transferAssets = async (payload: TransferAssetsPayload) => {
+  const response = await apiRequest<TransferAssetsResponse>('/api/assets/transfers', {
+    method: 'POST',
+    body: payload,
+  });
+
+  if (response.summary.transferred > 0) {
+    notifySectionTransfer(
+      buildSectionTransferPayload({
+        batchId: response.batchId,
+        toSection: response.toSection,
+        transferred: response.transferred,
+        skipped: response.skipped,
+      }),
+    );
+  }
+
+  response.transferred.forEach(item => {
+    if (item.assetId) {
+      notifyAssetUpdated(item.assetId);
+    }
+  });
+
+  return response;
+};
+
 export const patchAssetById = async (assetId: string, body: PatchAssetPayload) => {
   const response = await apiRequest<GetAssetResponse>(
     `/api/assets/${encodeURIComponent(assetId)}`,
     { method: 'PATCH', body },
   );
+
+  if (body.section) {
+    const history = response.data?.assignmentLifecycleHistory;
+    const lastEntry = Array.isArray(history) ? history[history.length - 1] : null;
+    const fromSection = lastEntry?.fromSection?.trim();
+
+    notifySectionTransfer({
+      batchId: `patch-${assetId}-${Date.now()}`,
+      assetIds: [assetId],
+      toSection: body.section.trim(),
+      fromSections: fromSection ? [fromSection] : [],
+      transferredCount: 1,
+      timestamp: Date.now(),
+    });
+  }
 
   if (body.status) {
     notifyAssetStatusChanged(assetId);
@@ -81,6 +202,14 @@ export const fetchAssetById = async (assetId: string) => {
     { method: 'GET' },
   );
   return response.data;
+};
+
+export const fetchAllAssets = async () => {
+  const result = await apiRequest<{ assets?: AssetRecord[] }>('/api/assets', {
+    method: 'GET',
+  });
+
+  return result.assets || [];
 };
 
 const normalizeSectionOptions = (values: unknown) => {
@@ -127,12 +256,61 @@ export const fetchSectionOptions = async () => {
 
 export const fetchDepartmentOptions = fetchSectionOptions;
 
+export const fetchAssetSectionOptions = async () => {
+  const result = await apiRequest<{ sections?: string[] }>(
+    '/api/assets/sections/options',
+    { method: 'GET' },
+  );
+
+  return normalizeSectionOptions(result.sections);
+};
+
+export type AssetLifecycleRecord = {
+  _id?: string;
+  assetId?: string;
+  assetName?: string;
+  assetNumber?: string;
+  fromSection?: string;
+  toSection?: string;
+  assignedBy?: string;
+  assignedAt?: string;
+  lastUpdated?: string;
+  transferType?: string;
+  reason?: string;
+  status?: string;
+  assetStatus?: string;
+  verificationStatus?: string;
+};
+
+type RawAssetLifecycleRecord = AssetLifecycleRecord & {
+  initialSection?: string;
+  currentSection?: string;
+  assignmentDate?: string;
+};
+
+const normalizeLifecycleRecord = (record: RawAssetLifecycleRecord): AssetLifecycleRecord => ({
+  _id: record._id,
+  assetId: record.assetId,
+  assetName: record.assetName,
+  assetNumber: record.assetNumber,
+  fromSection: record.fromSection || record.initialSection,
+  toSection: record.toSection || record.currentSection,
+  assignedBy: record.assignedBy,
+  assignedAt: record.assignedAt || record.assignmentDate,
+  lastUpdated: record.lastUpdated,
+  transferType: record.transferType,
+  reason: record.reason,
+  status: record.status,
+  assetStatus: record.assetStatus,
+  verificationStatus: record.verificationStatus,
+});
+
 export const fetchAssignmentLifecycle = async () => {
-  const result = await apiRequest<{ lifecycle: unknown[] }>(
+  const result = await apiRequest<{ lifecycle: RawAssetLifecycleRecord[] }>(
     '/api/assets/lifecycle/history',
     { method: 'GET' },
   );
-  return result.lifecycle || [];
+  return (result.lifecycle || []).map(normalizeLifecycleRecord);
 };
 
 export const fetchAssetsByStatus = async (status: string) => {

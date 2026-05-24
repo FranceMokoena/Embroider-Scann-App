@@ -5,6 +5,7 @@ const {
   createBulkAssets,
   createAsset,
   createSection,
+  createAssetTransfer,
   deleteAsset,
   getAssetById,
   getSectionOptions,
@@ -27,6 +28,7 @@ router.get('/departments/options', requireAuth, getSectionOptions);
 router.get('/sections/summary', requireAuth, getSectionsSummary);
 router.get('/sections/export', requireAuth, exportSectionsPdf);
 router.post('/sections', requireAuth, createSection);
+router.post('/transfers', requireAuth, createAssetTransfer);
 router.get('/:id', requireAuth, getAssetById);
 router.post('/bulk-create', requireAuth, createBulkAssets);
 router.post('/', requireAuth, createAsset);

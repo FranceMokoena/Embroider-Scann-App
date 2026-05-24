@@ -39,6 +39,7 @@ const assetSchema = new mongoose.Schema({
     type: String,
     set: trimString,
     default: undefined,
+    index: true,
   },
   // Legacy fields retained only so existing MongoDB documents can be migrated/read safely.
   category: {
@@ -54,6 +55,15 @@ const assetSchema = new mongoose.Schema({
   verificationStatus: {
     type: String,
     set: trimString,
+    default: undefined,
+  },
+  verifiedAt: {
+    type: Date,
+    default: undefined,
+  },
+  verifiedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
     default: undefined,
   },
   location: {
@@ -89,6 +99,9 @@ const assetSchema = new mongoose.Schema({
     assignedAt: { type: Date, default: () => new Date() },
     assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     source: { type: String, set: trimString },
+    transferType: { type: String, set: trimString },
+    reason: { type: String, set: trimString },
+    batchId: { type: String, set: trimString },
   }],
   verificationHistory: [{
     section: { type: String, set: trimString },
