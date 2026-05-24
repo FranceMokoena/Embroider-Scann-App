@@ -414,21 +414,11 @@ const getAssetSummary = async () => {
 };
 
 const getAvailableSections = async () => {
-  const [assetSections, legacyCategories, legacyLocations, userDepartments, explicitSectionNames] = await Promise.all([
-    Asset.distinct('section', { section: { $exists: true, $nin: [null, ''] } }),
-    Asset.distinct('category', { category: { $exists: true, $nin: [null, ''] } }),
-    Asset.distinct('location', { location: { $exists: true, $nin: [null, ''] } }),
-    User.distinct('department', { department: { $exists: true, $nin: [null, ''] } }),
-    Section.distinct('section', { section: { $exists: true, $nin: [null, ''] } }),
-  ]);
+  const explicitSectionNames = await Section.distinct('section', {
+    section: { $exists: true, $nin: [null, ''] },
+  });
 
-  return Array.from(new Set([
-    ...assetSections,
-    ...legacyCategories,
-    ...legacyLocations,
-    ...userDepartments,
-    ...explicitSectionNames,
-  ].map(trimString).filter(Boolean)))
+  return Array.from(new Set(explicitSectionNames.map(trimString).filter(Boolean)))
     .sort((left, right) => left.localeCompare(right));
 };
 

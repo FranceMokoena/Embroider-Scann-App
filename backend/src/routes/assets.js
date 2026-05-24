@@ -27,6 +27,7 @@ router.get('/sections/options', requireAuth, getSectionOptions);
 router.get('/departments/options', requireAuth, getSectionOptions);
 router.get('/sections/summary', requireAuth, getSectionsSummary);
 router.get('/sections/export', requireAuth, exportSectionsPdf);
+router.get('/sections', requireAuth, getSectionOptions);
 router.post('/sections', requireAuth, createSection);
 router.post('/transfers', requireAuth, createAssetTransfer);
 router.get('/:id', requireAuth, getAssetById);

@@ -258,7 +258,7 @@ export const fetchDepartmentOptions = fetchSectionOptions;
 
 export const fetchAssetSectionOptions = async () => {
   const result = await apiRequest<{ sections?: string[] }>(
-    '/api/assets/sections/options',
+    '/api/assets/sections',
     { method: 'GET' },
   );
 
