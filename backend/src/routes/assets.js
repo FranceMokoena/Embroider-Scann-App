@@ -9,6 +9,7 @@ const {
   getAssetById,
   getSectionOptions,
   getSectionsSummary,
+  exportSectionsPdf,
   getAssetSummary,
   getAssignmentLifecycle,
   listAssets,

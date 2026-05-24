@@ -202,7 +202,7 @@ export default function SectionsScreen({ navigation }: any) {
                 <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.dateCell]}>
                   Created
                 </Text>
-                <Text numberOfLines={1} style={[styles.cell, styles.headerCell]}>
+                <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.managerCell]}>
                   Manager
                 </Text>
                 <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.countCell]}>
@@ -217,7 +217,10 @@ export default function SectionsScreen({ navigation }: any) {
                 <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.countCell]}>
                   Beyond Repair
                 </Text>
-                <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.actionCell]}>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.cell, styles.headerCell, styles.actionCell, styles.actionHeaderText]}
+                >
                   View Record
                 </Text>
               </View>
@@ -240,8 +243,12 @@ export default function SectionsScreen({ navigation }: any) {
                     {formatDateTime(section.createdAt)}
                   </Text>
 
-                  <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>
-                    {section.manager || section.createdBy || '—'}
+                  <Text
+                    numberOfLines={2}
+                    ellipsizeMode="tail"
+                    style={[styles.cell, styles.managerCell]}
+                  >
+                    {section.manager?.trim() || '—'}
                   </Text>
 
                   <Text style={[styles.cell, styles.countCell, styles.totalCount]}>
@@ -260,12 +267,12 @@ export default function SectionsScreen({ navigation }: any) {
                     {section.beyondRepairAssets}
                   </Text>
 
-                  <View style={[styles.cell, styles.actionCell]}>
+                  <View style={[styles.cell, styles.actionCell, styles.actionCellBody]}>
                     <Pressable
                       style={styles.viewButton}
                       onPress={() => handleViewSection(section)}
                     >
-                      <Ionicons name="eye-outline" size={14} color={PRIMARY_BLUE} />
+                      <Ionicons name="eye-outline" size={16} color={PRIMARY_BLUE} />
                       <Text style={styles.viewButtonText}>View</Text>
                     </Pressable>
                   </View>
@@ -409,7 +416,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#dbe2ea',
     overflow: 'hidden',
-    minWidth: 1040,
+    minWidth: 1100,
   },
   tableHeader: {
     backgroundColor: '#f8fafc',
@@ -441,14 +448,24 @@ const styles = StyleSheet.create({
   dateCell: {
     width: 150,
   },
+  managerCell: {
+    width: 140,
+  },
   countCell: {
     width: 88,
     textAlign: 'center',
     fontWeight: '700',
   },
   actionCell: {
-    width: 56,
+    width: 108,
     borderRightWidth: 0,
+    justifyContent: 'center',
+  },
+  actionCellBody: {
+    alignItems: 'center',
+  },
+  actionHeaderText: {
+    textAlign: 'center',
   },
 
   exportButton: {
@@ -480,16 +497,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 6,
     backgroundColor: '#eff6ff',
     borderWidth: 1,
     borderColor: '#bfdbfe',
-    borderRadius: 6,
-    paddingVertical: 4,
-    paddingHorizontal: 6,
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    minWidth: 72,
   },
   viewButtonText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     color: PRIMARY_BLUE,
   },

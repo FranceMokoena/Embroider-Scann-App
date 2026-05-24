@@ -209,7 +209,7 @@ const exportSectionsPdf = async (req, res) => {
     // Rows
     rows.forEach(row => {
       doc.fontSize(10).text(row.section || '—', { continued: true, width: 220 });
-      doc.text(row.manager || row.createdBy || '—', { continued: true, width: 140 });
+      doc.text(row.manager?.trim() || '—', { continued: true, width: 140 });
       doc.text(row.createdAt ? new Date(row.createdAt).toLocaleString() : '—', { continued: true, width: 120 });
       doc.text(String(row.totalAssets || 0), { align: 'right' });
       doc.moveDown(0.2);

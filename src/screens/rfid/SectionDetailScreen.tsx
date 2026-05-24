@@ -184,7 +184,7 @@ export default function SectionDetailScreen({ navigation }: any) {
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>Manager</Text>
-              <Text style={styles.summaryValue}>{summary.manager || summary.createdBy || dash}</Text>
+              <Text style={styles.summaryValue}>{summary.manager?.trim() || dash}</Text>
             </View>
           </View>
 
