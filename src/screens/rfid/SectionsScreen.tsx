@@ -14,8 +14,11 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Alert, Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
-import { fetchSectionsSummary, createSection, SectionSummary } from '../../services/assetApi';
+import { fetchSectionsSummary, createSection, SectionSummary, exportSectionsPdf } from '../../services/assetApi';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
 
 const formatDateTime = (value?: string | null) => {
@@ -116,11 +119,44 @@ export default function SectionsScreen({ navigation }: any) {
 
           <View>
             <Text style={styles.title}>Sections</Text>
-            <Text style={styles.subtitle}>All organizational sections in the system</Text>
+            <Text style={styles.subtitle}>All organizational sections</Text>
           </View>
         </View>
 
         <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={async () => {
+              try {
+                const res = await exportSectionsPdf();
+                const base64 = res.pdfBase64;
+                if (!base64) throw new Error('No PDF returned');
+
+                const filename = `${FileSystem.documentDirectory}sections_${Date.now()}.pdf`;
+                await FileSystem.writeAsStringAsync(filename, base64, { encoding: FileSystem.EncodingType.Base64 });
+
+                const dialogTitle = `Sections Export - ${new Date().toLocaleDateString()}`;
+
+                if (Platform.OS === 'web') {
+                  // open pdf in new tab for web
+                  (window as any).open(`data:application/pdf;base64,${base64}`, '_blank');
+                } else {
+                  await Sharing.shareAsync(filename, {
+                    mimeType: 'application/pdf',
+                    dialogTitle,
+                    UTI: 'com.adobe.pdf',
+                  });
+                }
+              } catch (err: any) {
+                console.error('Export failed', err);
+                Alert.alert('Export failed', err?.message || 'Unable to export PDF');
+              }
+            }}
+            style={[styles.createButton, styles.exportButton]}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="download-outline" size={18} color="#ffffff" />
+          </TouchableOpacity>
+
           <TouchableOpacity
             onPress={() => setCreatingSection(true)}
             style={styles.createButton}
@@ -167,7 +203,7 @@ export default function SectionsScreen({ navigation }: any) {
                   Created
                 </Text>
                 <Text numberOfLines={1} style={[styles.cell, styles.headerCell]}>
-                  By (Admin)
+                  Manager
                 </Text>
                 <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.countCell]}>
                   Total Assets
@@ -205,7 +241,7 @@ export default function SectionsScreen({ navigation }: any) {
                   </Text>
 
                   <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>
-                    {section.createdBy || '—'}
+                    {section.manager || section.createdBy || '—'}
                   </Text>
 
                   <Text style={[styles.cell, styles.countCell, styles.totalCount]}>
@@ -411,8 +447,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   actionCell: {
-    width: 100,
+    width: 56,
     borderRightWidth: 0,
+  },
+
+  exportButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#0ea5a4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
   sectionNameText: {
     fontWeight: '700',
@@ -439,11 +485,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#bfdbfe',
     borderRadius: 6,
-    paddingVertical: 5,
-    paddingHorizontal: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
   },
   viewButtonText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: PRIMARY_BLUE,
   },

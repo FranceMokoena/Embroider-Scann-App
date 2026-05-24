@@ -486,6 +486,7 @@ const getSectionSummary = async () => {
       beyondRepairAssets: 0,
       createdAt: sectionDoc.createdAt || null,
       createdBy: getAssignedByDisplayName(sectionDoc.createdBy) || null,
+      manager: trimString(sectionDoc.manager) || null,
     });
   }
 
@@ -505,6 +506,7 @@ const getSectionSummary = async () => {
       beyondRepairAssets: 0,
       createdAt: null,
       createdBy: null,
+      manager: null,
     };
 
     existing.totalAssets += 1;

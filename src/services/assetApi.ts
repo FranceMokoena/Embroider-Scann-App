@@ -153,6 +153,7 @@ export type SectionSummary = {
   beyondRepairAssets: number;
   createdAt?: string | null;
   createdBy?: string | null;
+  manager?: string | null;
 };
 
 export const fetchSectionsSummary = async () => {
@@ -162,6 +163,11 @@ export const fetchSectionsSummary = async () => {
   );
 
   return result.summary || [];
+};
+
+export const exportSectionsPdf = async (section?: string) => {
+  const query = section ? `?section=${encodeURIComponent(section)}` : '';
+  return apiRequest<{ pdfBase64?: string }>(`/api/assets/sections/export${query}`, { method: 'GET' });
 };
 
 export const fetchAssetsBySection = async (section: string) => {

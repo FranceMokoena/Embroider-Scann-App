@@ -14,6 +14,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { RouteProp, useRoute } from '@react-navigation/native';
+import { Alert, Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+
+import { exportSectionsPdf } from '../../services/assetApi';
 
 import {
   AssetRecord,
@@ -81,6 +86,7 @@ export default function SectionDetailScreen({ navigation }: any) {
           beyondRepairAssets: sectionAssets.filter(a => a.status === 'Beyond Repair').length,
           createdAt: null,
           createdBy: null,
+          manager: null,
         };
 
       setSummary(match);
@@ -141,6 +147,32 @@ export default function SectionDetailScreen({ navigation }: any) {
           <Text style={styles.countValue}>{assets.length}</Text>
           <Text style={styles.countLabel}>Assets</Text>
         </View>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={async () => {
+              try {
+                const res = await exportSectionsPdf(sectionName);
+                const base64 = res.pdfBase64;
+                if (!base64) throw new Error('No PDF returned');
+
+                const filename = `${FileSystem.documentDirectory}section_${sectionName.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.pdf`;
+                await FileSystem.writeAsStringAsync(filename, base64, { encoding: FileSystem.EncodingType.Base64 });
+                if (Platform.OS === 'web') {
+                  Alert.alert('Export ready', 'PDF export is ready (web not supported for sharing)');
+                } else {
+                  await Sharing.shareAsync(filename);
+                }
+              } catch (err: any) {
+                console.error('Export failed', err);
+                Alert.alert('Export failed', err?.message || 'Unable to export PDF');
+              }
+            }}
+            style={[styles.createButton, styles.exportButton]}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="download-outline" size={18} color="#ffffff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {summary ? (
@@ -151,8 +183,8 @@ export default function SectionDetailScreen({ navigation }: any) {
               <Text style={styles.summaryValue}>{formatDateTime(summary.createdAt)}</Text>
             </View>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>By (Admin)</Text>
-              <Text style={styles.summaryValue}>{summary.createdBy || dash}</Text>
+              <Text style={styles.summaryLabel}>Manager</Text>
+              <Text style={styles.summaryValue}>{summary.manager || summary.createdBy || dash}</Text>
             </View>
           </View>
 

@@ -24,6 +24,7 @@ router.get('/lifecycle/history', requireAuth, getAssignmentLifecycle);
 router.get('/sections/options', requireAuth, getSectionOptions);
 router.get('/departments/options', requireAuth, getSectionOptions);
 router.get('/sections/summary', requireAuth, getSectionsSummary);
+router.get('/sections/export', requireAuth, exportSectionsPdf);
 router.post('/sections', requireAuth, createSection);
 router.get('/:id', requireAuth, getAssetById);
 router.post('/bulk-create', requireAuth, createBulkAssets);

@@ -175,6 +175,52 @@ const getSectionsSummary = async (_req, res) => {
   }
 };
 
+const exportSectionsPdf = async (req, res) => {
+  try {
+    const sectionFilter = req.query && req.query.section ? String(req.query.section) : null;
+    const summary = await assetService.getSectionSummary();
+
+    // Optionally filter to a single section
+    const rows = sectionFilter
+      ? summary.filter(s => s.section === sectionFilter)
+      : summary;
+
+    const PDFDocument = require('pdfkit');
+    const doc = new PDFDocument({ size: 'A4', margin: 40 });
+    const chunks = [];
+
+    doc.on('data', chunk => chunks.push(chunk));
+    doc.on('end', () => {
+      const buffer = Buffer.concat(chunks);
+      const base64 = buffer.toString('base64');
+      return res.status(200).json({ success: true, pdfBase64: base64 });
+    });
+
+    doc.fontSize(18).text('Sections Summary', { align: 'center' });
+    doc.moveDown(0.5);
+
+    // Header row
+    doc.fontSize(11).text('Section', { continued: true, width: 220 });
+    doc.text('Manager', { continued: true, width: 140 });
+    doc.text('Created', { continued: true, width: 120 });
+    doc.text('Total', { align: 'right' });
+    doc.moveDown(0.3);
+
+    // Rows
+    rows.forEach(row => {
+      doc.fontSize(10).text(row.section || '—', { continued: true, width: 220 });
+      doc.text(row.manager || row.createdBy || '—', { continued: true, width: 140 });
+      doc.text(row.createdAt ? new Date(row.createdAt).toLocaleString() : '—', { continued: true, width: 120 });
+      doc.text(String(row.totalAssets || 0), { align: 'right' });
+      doc.moveDown(0.2);
+    });
+
+    doc.end();
+  } catch (error) {
+    return sendAssetError(res, error, 'Failed to export sections');
+  }
+};
+
 module.exports = {
   createBulkAssets,
   createAsset,
@@ -183,6 +229,7 @@ module.exports = {
   getAssetById,
   getSectionOptions,
   getSectionsSummary,
+  exportSectionsPdf,
   getAssetSummary,
   getAssignmentLifecycle,
   listAssets,
