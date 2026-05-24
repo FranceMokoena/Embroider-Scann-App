@@ -685,6 +685,7 @@ module.exports = {
   getAvailableSections,
   getSectionSummary,
   getAvailableDepartments: getAvailableSections,
+  mapAssetResponse,
   updateAsset,
   verifyRoomInventory,
 };

@@ -99,6 +99,34 @@ const getTransferResponseFromError = (error: unknown) => {
   return null;
 };
 
+const getTransferFailedAssetIds = (result: TransferAssetsResponse) =>
+  result.errors.map(item => item.assetId).filter(Boolean);
+
+const getTransferAlertMessage = (result: TransferAssetsResponse) => {
+  const summaryLine =
+    `${result.summary.transferred} transferred, ` +
+    `${result.summary.skipped} skipped, ` +
+    `${result.summary.failed} failed.`;
+
+  const firstError = result.errors[0]?.message;
+  const firstSkipped = result.skipped[0]?.reason;
+
+  if (firstError) {
+    return `${summaryLine}\n\nFirst error: ${firstError}`;
+  }
+
+  if (firstSkipped) {
+    return `${summaryLine}\n\nFirst skipped reason: ${firstSkipped}`;
+  }
+
+  return summaryLine;
+};
+
+const hasTransferIssues = (result: TransferAssetsResponse) =>
+  result.summary.failed > 0 ||
+  result.summary.skipped > 0 ||
+  result.summary.transferred === 0;
+
 export default function AssetsRotationScreen({ navigation }: any) {
   const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [sections, setSections] = useState<string[]>([]);
@@ -369,6 +397,7 @@ export default function AssetsRotationScreen({ navigation }: any) {
 
     try {
       setIsTransferring(true);
+      setTransferResult(null);
 
       const result = await transferAssets({
         assetIds: validated.assetIds,
@@ -379,20 +408,40 @@ export default function AssetsRotationScreen({ navigation }: any) {
 
       setTransferResult(result);
       setConfirmationVisible(false);
-      setSelectedAssetIds([]);
-      setTransferReason('');
-      setTargetSection('');
 
       await loadData({ showHistoryLoader: true });
+
+      if (hasTransferIssues(result)) {
+        const failedAssetIds = getTransferFailedAssetIds(result);
+        setSelectedAssetIds(failedAssetIds);
+
+        Alert.alert(
+          result.summary.transferred > 0
+            ? 'Transfer Partially Complete'
+            : 'Transfer Failed',
+          getTransferAlertMessage(result),
+        );
+      } else {
+        setSelectedAssetIds([]);
+        setTransferReason('');
+        setTargetSection('');
+      }
     } catch (error) {
       const transferError = getTransferResponseFromError(error);
 
       if (transferError) {
         setTransferResult(transferError);
         setConfirmationVisible(false);
+        setSelectedAssetIds(getTransferFailedAssetIds(transferError));
         if (transferError.summary.transferred > 0) {
           await loadData({ showHistoryLoader: true });
         }
+        Alert.alert(
+          transferError.summary.transferred > 0
+            ? 'Transfer Partially Complete'
+            : 'Transfer Failed',
+          getTransferAlertMessage(transferError),
+        );
       } else {
         Alert.alert(
           'Transfer Failed',
@@ -774,7 +823,12 @@ export default function AssetsRotationScreen({ navigation }: any) {
           )}
 
           {transferResult ? (
-            <View style={styles.resultPanel}>
+            <View
+              style={[
+                styles.resultPanel,
+                hasTransferIssues(transferResult) && styles.resultPanelWarning,
+              ]}
+            >
               <Text style={styles.resultTitle}>Latest Transfer Result</Text>
               <View style={styles.resultGrid}>
                 <Text style={styles.resultItem}>Requested: {transferResult.summary.requested}</Text>
@@ -782,6 +836,34 @@ export default function AssetsRotationScreen({ navigation }: any) {
                 <Text style={styles.resultItem}>Skipped: {transferResult.summary.skipped}</Text>
                 <Text style={styles.resultItem}>Failed: {transferResult.summary.failed}</Text>
               </View>
+              {transferResult.errors.length > 0 ? (
+                <View style={styles.resultIssueBox}>
+                  <Text style={styles.resultIssueTitle}>Transfer Errors</Text>
+                  {transferResult.errors.slice(0, 4).map(item => (
+                    <Text
+                      key={`${item.assetId}-${item.message}`}
+                      numberOfLines={3}
+                      style={styles.resultIssueText}
+                    >
+                      {item.message}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+              {transferResult.skipped.length > 0 ? (
+                <View style={styles.resultIssueBox}>
+                  <Text style={styles.resultIssueTitle}>Skipped Assets</Text>
+                  {transferResult.skipped.slice(0, 4).map(item => (
+                    <Text
+                      key={`${item.assetId}-${item.reason}`}
+                      numberOfLines={2}
+                      style={styles.resultIssueText}
+                    >
+                      {item.reason || 'Skipped by transfer validation.'}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
             </View>
           ) : null}
         </View>
@@ -1424,6 +1506,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#eff6ff',
     padding: 10,
   },
+  resultPanelWarning: {
+    borderColor: '#fecaca',
+    backgroundColor: '#fef2f2',
+  },
   resultTitle: {
     fontSize: 12,
     fontWeight: '800',
@@ -1440,6 +1526,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#334155',
+  },
+  resultIssueBox: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#fecaca',
+    paddingTop: 8,
+  },
+  resultIssueTitle: {
+    marginBottom: 4,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#991b1b',
+    textTransform: 'uppercase',
+  },
+  resultIssueText: {
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#7f1d1d',
   },
   modalOverlay: {
     flex: 1,
