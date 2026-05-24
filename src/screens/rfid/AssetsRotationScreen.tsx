@@ -15,33 +15,40 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 
 import { ApiError } from '../../config/api';
 import {
-  AssetLifecycleRecord,
-  AssetRecord,
   fetchAllAssets,
   fetchAssetSectionOptions,
   fetchAssignmentLifecycle,
   getAssetDisplayName,
   getAssetId,
   transferAssets,
-  TransferAssetsResponse,
+  type AssetLifecycleRecord,
+  type AssetRecord,
+  type TransferAssetsResponse,
 } from '../../services/assetApi';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
+import { getVerificationContext } from '../../utils/verificationSemantics';
 import { useSectionAwareRefresh } from './hooks/useSectionAwareRefresh';
 
 const dash = '-';
 const allSectionsValue = '__all_sections__';
-const allStatusesValue = '__all_statuses__';
-const lifecycleLimit = 50;
-const previewLimit = 40;
-
-const defaultStatusOptions = ['Healthy', 'Repairable', 'Beyond Repair'];
+const previewLimit = 8;
+const historyLimit = 40;
 
 const normalizeText = (value?: string | null) =>
   typeof value === 'string' ? value.trim() : '';
+
+const normalizeSectionKey = (value?: string | null) =>
+  normalizeText(value).toLowerCase();
+
+const normalizeSectionOptions = (values: string[]) =>
+  Array.from(
+    new Set(values.map(section => normalizeText(section)).filter(Boolean)),
+  ).sort((left, right) => left.localeCompare(right));
 
 const getAssetSection = (asset: AssetRecord) =>
   normalizeText(asset.section) || dash;
@@ -49,78 +56,26 @@ const getAssetSection = (asset: AssetRecord) =>
 const getAssetEpc = (asset: AssetRecord) =>
   normalizeText(asset.epc) || normalizeText(asset.epcKey) || dash;
 
-const getVerificationStatus = (asset?: AssetRecord | null) =>
-  normalizeText(asset?.verificationStatus) || dash;
-
 const formatDateTime = (value?: string | null) => {
-  if (!value) {
-    return dash;
-  }
+  if (!value) return dash;
 
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return dash;
-  }
-
-  return date.toLocaleString();
-};
-
-const statusStyleKey = (status?: string | null) => {
-  const normalized = normalizeText(status).toLowerCase();
-
-  if (normalized === 'healthy') return 'healthy';
-  if (normalized === 'repairable') return 'repairable';
-  if (normalized === 'beyond repair') return 'beyondRepair';
-  return 'neutral';
-};
-
-const getLatestVerification = (asset?: AssetRecord | null) => {
-  if (!asset) {
-    return {
-      section: dash,
-      verifiedAt: dash,
-    };
-  }
-
-  const latestHistory = (asset.verificationHistory || []).reduce<
-    NonNullable<AssetRecord['verificationHistory']>[number] | null
-  >((latest, entry) => {
-    if (!entry?.verifiedAt) {
-      return latest;
-    }
-
-    if (!latest?.verifiedAt) {
-      return entry;
-    }
-
-    return new Date(entry.verifiedAt).getTime() > new Date(latest.verifiedAt).getTime()
-      ? entry
-      : latest;
-  }, null);
-
-  return {
-    section: normalizeText(latestHistory?.section) || dash,
-    verifiedAt: formatDateTime(asset.verifiedAt || latestHistory?.verifiedAt),
-  };
+  return Number.isNaN(date.getTime()) ? dash : date.toLocaleString();
 };
 
 const getLifecycleDate = (record: AssetLifecycleRecord) =>
   record.assignedAt || record.lastUpdated || null;
 
-const getLifecycleFromSection = (record: AssetLifecycleRecord) =>
-  normalizeText(record.fromSection) || dash;
+const getAssetKey = (asset: AssetRecord, index: number) =>
+  getAssetId(asset) ||
+  normalizeText(asset.epc) ||
+  normalizeText(asset.epcKey) ||
+  normalizeText(asset.assetNumber) ||
+  `asset-${index}`;
 
-const getLifecycleToSection = (record: AssetLifecycleRecord) =>
-  normalizeText(record.toSection) || dash;
-
-const getLifecycleKey = (record: AssetLifecycleRecord) =>
-  normalizeText(record._id)
-  || [
-    normalizeText(record.assetId),
-    normalizeText(getLifecycleDate(record)),
-    getLifecycleFromSection(record),
-    getLifecycleToSection(record),
-  ].filter(Boolean).join('-');
+const getHistoryKey = (record: AssetLifecycleRecord, index: number) =>
+  record._id ||
+  `${record.assetId || record.assetName || 'history'}-${record.assignedAt || record.lastUpdated || 'unknown'}-${index}`;
 
 const isTransferResponse = (value: unknown): value is TransferAssetsResponse => {
   if (!value || typeof value !== 'object') {
@@ -128,7 +83,12 @@ const isTransferResponse = (value: unknown): value is TransferAssetsResponse => 
   }
 
   const maybe = value as Partial<TransferAssetsResponse>;
-  return Boolean(maybe.summary && Array.isArray(maybe.transferred) && Array.isArray(maybe.errors));
+
+  return Boolean(
+    maybe.summary &&
+    Array.isArray(maybe.transferred) &&
+    Array.isArray(maybe.errors),
+  );
 };
 
 const getTransferResponseFromError = (error: unknown) => {
@@ -141,83 +101,107 @@ const getTransferResponseFromError = (error: unknown) => {
 
 export default function AssetsRotationScreen({ navigation }: any) {
   const [assets, setAssets] = useState<AssetRecord[]>([]);
-  const [sectionOptions, setSectionOptions] = useState<string[]>([]);
-  const [lifecycle, setLifecycle] = useState<AssetLifecycleRecord[]>([]);
+  const [sections, setSections] = useState<string[]>([]);
+  const [history, setHistory] = useState<AssetLifecycleRecord[]>([]);
+
   const [loading, setLoading] = useState(true);
-  const [sectionsLoading, setSectionsLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [dataError, setDataError] = useState('');
 
-  const [sectionFilter, setSectionFilter] = useState(allSectionsValue);
-  const [statusFilter, setStatusFilter] = useState(allStatusesValue);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sectionFilter, setSectionFilter] = useState(allSectionsValue);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [targetSection, setTargetSection] = useState('');
   const [transferReason, setTransferReason] = useState('');
+
   const [confirmationVisible, setConfirmationVisible] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
-  const [confirmationError, setConfirmationError] = useState('');
-  const [transferResult, setTransferResult] = useState<TransferAssetsResponse | null>(null);
+  const [transferResult, setTransferResult] =
+    useState<TransferAssetsResponse | null>(null);
 
-  const assetsById = useMemo(() => {
+  const loadData = useCallback(
+    async (options: { showLoader?: boolean; showHistoryLoader?: boolean } = {}) => {
+      if (options.showLoader) {
+        setLoading(true);
+      }
+      if (options.showHistoryLoader) {
+        setHistoryLoading(true);
+      }
+
+      try {
+        const [assetData, sectionData, lifecycleData] = await Promise.all([
+          fetchAllAssets(),
+          fetchAssetSectionOptions(),
+          fetchAssignmentLifecycle(),
+        ]);
+
+        setAssets(assetData);
+        setSections(normalizeSectionOptions(sectionData));
+        setHistory(lifecycleData);
+      } catch (error) {
+        console.error('Failed to load rotation data', error);
+        Alert.alert('Error', 'Failed to load rotation data.');
+      } finally {
+        if (options.showLoader) {
+          setLoading(false);
+        }
+        if (options.showHistoryLoader) {
+          setHistoryLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    void loadData({ showLoader: true, showHistoryLoader: true });
+  }, [loadData]);
+
+  useSectionAwareRefresh({
+    enabled: !loading,
+    onRefresh: () => loadData({ showHistoryLoader: true }),
+  });
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+
+    try {
+      await loadData({ showHistoryLoader: true });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const assetById = useMemo(() => {
     const map = new Map<string, AssetRecord>();
 
     assets.forEach(asset => {
-      const id = getAssetId(asset);
-      if (id) {
-        map.set(id, asset);
+      const assetId = getAssetId(asset);
+      if (assetId) {
+        map.set(assetId, asset);
       }
     });
 
     return map;
   }, [assets]);
 
-  const selectedIdSet = useMemo(
-    () => new Set(selectedAssetIds),
-    [selectedAssetIds],
-  );
-
-  const assetSections = useMemo(() => {
-    const set = new Set<string>();
-
-    assets.forEach(asset => {
-      const section = normalizeText(asset.section);
-      if (section) {
-        set.add(section);
-      }
-    });
-
-    return Array.from(set).sort((left, right) => left.localeCompare(right));
-  }, [assets]);
-
-  const availableSections = useMemo(() => {
-    const set = new Set<string>([...sectionOptions, ...assetSections].filter(Boolean));
-    return Array.from(set).sort((left, right) => left.localeCompare(right));
-  }, [assetSections, sectionOptions]);
-
-  const statusOptions = useMemo(() => {
-    const set = new Set<string>(defaultStatusOptions);
-
-    assets.forEach(asset => {
-      const status = normalizeText(asset.status);
-      if (status) {
-        set.add(status);
-      }
-    });
-
-    return Array.from(set).sort((left, right) => left.localeCompare(right));
-  }, [assets]);
+  useEffect(() => {
+    setSelectedAssetIds(previous =>
+      previous.filter(assetId => assetById.has(assetId)),
+    );
+  }, [assetById]);
 
   const filteredAssets = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
+    const selectedSection = normalizeText(sectionFilter);
 
     return assets.filter(asset => {
-      if (sectionFilter !== allSectionsValue && getAssetSection(asset) !== sectionFilter) {
-        return false;
-      }
+      const currentSection = getAssetSection(asset);
 
-      if (statusFilter !== allStatusesValue && normalizeText(asset.status) !== statusFilter) {
+      if (
+        selectedSection !== allSectionsValue &&
+        normalizeSectionKey(currentSection) !== normalizeSectionKey(selectedSection)
+      ) {
         return false;
       }
 
@@ -226,321 +210,300 @@ export default function AssetsRotationScreen({ navigation }: any) {
       }
 
       return [
-        asset.assetNumber,
         getAssetDisplayName(asset),
+        asset.assetNumber,
         getAssetEpc(asset),
+        currentSection,
       ].some(value => normalizeText(value).toLowerCase().includes(query));
     });
-  }, [assets, searchQuery, sectionFilter, statusFilter]);
+  }, [assets, searchQuery, sectionFilter]);
+
+  const filteredAssetIds = useMemo(
+    () => filteredAssets.map(getAssetId).filter(Boolean),
+    [filteredAssets],
+  );
+
+  const selectedAssetIdSet = useMemo(
+    () => new Set(selectedAssetIds),
+    [selectedAssetIds],
+  );
 
   const selectedAssets = useMemo(
-    () => selectedAssetIds
-      .map(assetId => assetsById.get(assetId))
-      .filter((asset): asset is AssetRecord => Boolean(asset)),
-    [assetsById, selectedAssetIds],
+    () =>
+      selectedAssetIds
+        .map(assetId => assetById.get(assetId))
+        .filter(Boolean) as AssetRecord[],
+    [assetById, selectedAssetIds],
   );
 
-  const previewRows = useMemo(
-    () => selectedAssets.map(asset => ({
-      asset,
-      assetId: getAssetId(asset),
-      fromSection: getAssetSection(asset),
-      toSection: targetSection.trim(),
-      willSkip: targetSection.trim() !== '' && getAssetSection(asset) === targetSection.trim(),
-    })),
-    [selectedAssets, targetSection],
+  const previewAssets = useMemo(
+    () => selectedAssets.slice(0, previewLimit),
+    [selectedAssets],
   );
 
-  const visibleLifecycle = useMemo(
-    () => lifecycle.slice(0, lifecycleLimit),
-    [lifecycle],
+  const historyPreview = useMemo(
+    () => history.slice(0, historyLimit),
+    [history],
   );
 
-  const validTargetSelected =
-    targetSection.trim() !== '' && availableSections.includes(targetSection.trim());
+  const allFilteredSelected =
+    filteredAssetIds.length > 0 &&
+    filteredAssetIds.every(assetId => selectedAssetIdSet.has(assetId));
 
-  const canOpenConfirmation =
-    selectedAssets.length > 0 && validTargetSelected && !isTransferring;
+  const targetSectionIsRegistered = useMemo(
+    () =>
+      !targetSection ||
+      sections.some(
+        section => normalizeSectionKey(section) === normalizeSectionKey(targetSection),
+      ),
+    [sections, targetSection],
+  );
 
-  const loadAssets = useCallback(async () => {
-    try {
-      const nextAssets = await fetchAllAssets();
-      const nextIds = new Set(nextAssets.map(getAssetId).filter(Boolean));
+  const selectedAllAlreadyInTarget = useMemo(() => {
+    const normalizedTarget = normalizeSectionKey(targetSection);
 
-      setAssets(nextAssets);
-      setSelectedAssetIds(previous => previous.filter(assetId => nextIds.has(assetId)));
-    } catch (error) {
-      console.error('Failed to load assets for rotation', error);
-      setDataError('Asset records could not be loaded. Pull to refresh or try again.');
-    }
-  }, []);
+    return Boolean(normalizedTarget) &&
+      selectedAssets.length > 0 &&
+      selectedAssets.every(
+        asset => normalizeSectionKey(getAssetSection(asset)) === normalizedTarget,
+      );
+  }, [selectedAssets, targetSection]);
 
-  const loadSectionOptions = useCallback(async () => {
-    setSectionsLoading(true);
+  const canOpenPreview =
+    selectedAssets.length > 0 &&
+    Boolean(targetSection.trim()) &&
+    targetSectionIsRegistered &&
+    !selectedAllAlreadyInTarget;
 
-    try {
-      const options = await fetchAssetSectionOptions();
-      setSectionOptions(options);
-    } catch (error) {
-      console.error('Failed to load rotation section options', error);
-      setDataError('Section options could not be loaded. Transfer targets may be incomplete.');
-    } finally {
-      setSectionsLoading(false);
-    }
-  }, []);
-
-  const loadLifecycle = useCallback(async () => {
-    setHistoryLoading(true);
-
-    try {
-      const records = await fetchAssignmentLifecycle();
-      setLifecycle(records);
-    } catch (error) {
-      console.error('Failed to load rotation lifecycle', error);
-      setDataError('Lifecycle history could not be loaded.');
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, []);
-
-  const refreshRotationData = useCallback(async (showScreenLoader = false) => {
-    if (showScreenLoader) {
-      setLoading(true);
-    }
-
-    setDataError('');
-
-    try {
-      await Promise.all([
-        loadAssets(),
-        loadSectionOptions(),
-        loadLifecycle(),
-      ]);
-    } finally {
-      if (showScreenLoader) {
-        setLoading(false);
-      }
-    }
-  }, [loadAssets, loadLifecycle, loadSectionOptions]);
-
-  useEffect(() => {
-    void refreshRotationData(true);
-  }, [refreshRotationData]);
-
-  useSectionAwareRefresh({
-    onRefresh: () => refreshRotationData(false),
-  });
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-
-    try {
-      await refreshRotationData(false);
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  const handleToggleAsset = (asset: AssetRecord) => {
+  const handleToggleAsset = useCallback((asset: AssetRecord) => {
     const assetId = getAssetId(asset);
-    if (!assetId) {
+
+    if (!assetId) return;
+
+    setSelectedAssetIds(previous => {
+      if (previous.includes(assetId)) {
+        return previous.filter(id => id !== assetId);
+      }
+
+      return [...previous, assetId];
+    });
+  }, []);
+
+  const handleSelectFilteredAssets = useCallback(() => {
+    if (filteredAssetIds.length === 0) {
       return;
     }
 
     setSelectedAssetIds(previous =>
-      previous.includes(assetId)
-        ? previous.filter(id => id !== assetId)
-        : [...previous, assetId],
+      Array.from(new Set([...previous, ...filteredAssetIds])),
     );
-  };
+  }, [filteredAssetIds]);
 
-  const handleSelectAllFiltered = () => {
-    const filteredIds = filteredAssets.map(getAssetId).filter(Boolean);
-
-    setSelectedAssetIds(previous =>
-      Array.from(new Set([...previous, ...filteredIds])),
-    );
-  };
-
-  const handleClearSelection = () => {
+  const handleClearSelection = useCallback(() => {
     setSelectedAssetIds([]);
-  };
+  }, []);
 
-  const handleOpenConfirmation = () => {
+  const validateTransfer = useCallback(() => {
+    const normalizedTarget = targetSection.trim();
+    const normalizedReason = transferReason.trim();
+
     if (selectedAssets.length === 0) {
-      Alert.alert('No assets selected', 'Select at least one asset before starting a rotation transfer.');
+      Alert.alert('Select Assets', 'Please select at least one asset.');
+      return null;
+    }
+
+    if (!normalizedTarget) {
+      Alert.alert('Target Section', 'Please choose a target section.');
+      return null;
+    }
+
+    if (!sections.some(section => normalizeSectionKey(section) === normalizeSectionKey(normalizedTarget))) {
+      Alert.alert(
+        'Invalid Section',
+        'Choose a registered section from the official sections list.',
+      );
+      return null;
+    }
+
+    const everyAssetAlreadyThere = selectedAssets.every(
+      asset => normalizeSectionKey(getAssetSection(asset)) === normalizeSectionKey(normalizedTarget),
+    );
+
+    if (everyAssetAlreadyThere) {
+      Alert.alert(
+        'No Rotation Needed',
+        'All selected assets are already assigned to the target section.',
+      );
+      return null;
+    }
+
+    return {
+      assetIds: selectedAssets.map(asset => getAssetId(asset)).filter(Boolean),
+      reason: normalizedReason,
+      toSection: normalizedTarget,
+    };
+  }, [sections, selectedAssets, targetSection, transferReason]);
+
+  const handleOpenPreview = useCallback(() => {
+    const validated = validateTransfer();
+
+    if (!validated) {
       return;
     }
 
-    if (!validTargetSelected) {
-      Alert.alert('Target section required', 'Choose a valid target section from the section list.');
-      return;
-    }
-
-    setConfirmationError('');
+    setTargetSection(validated.toSection);
+    setTransferReason(validated.reason);
     setConfirmationVisible(true);
-  };
+  }, [validateTransfer]);
 
-  const handleConfirmTransfer = async () => {
+  const handleTransfer = useCallback(async () => {
     if (isTransferring) {
       return;
     }
 
-    const assetIds = selectedAssets.map(getAssetId).filter(Boolean);
-    const toSection = targetSection.trim();
+    const validated = validateTransfer();
 
-    if (assetIds.length === 0 || !toSection) {
-      setConfirmationError('The transfer request is missing assets or a target section.');
+    if (!validated || validated.assetIds.length === 0) {
       return;
     }
 
-    setIsTransferring(true);
-    setConfirmationError('');
-
     try {
+      setIsTransferring(true);
+
       const result = await transferAssets({
-        assetIds,
-        toSection,
-        reason: transferReason.trim() || undefined,
+        assetIds: validated.assetIds,
+        toSection: validated.toSection,
+        reason: validated.reason,
         transferType: 'rotation',
       });
 
       setTransferResult(result);
       setConfirmationVisible(false);
+      setSelectedAssetIds([]);
       setTransferReason('');
+      setTargetSection('');
 
-      const failedIds = new Set(result.errors.map(item => item.assetId));
-      setSelectedAssetIds(result.errors.length > 0 ? assetIds.filter(id => failedIds.has(id)) : []);
-
-      await refreshRotationData(false);
+      await loadData({ showHistoryLoader: true });
     } catch (error) {
-      const transferErrorResult = getTransferResponseFromError(error);
+      const transferError = getTransferResponseFromError(error);
 
-      if (transferErrorResult) {
-        setTransferResult(transferErrorResult);
+      if (transferError) {
+        setTransferResult(transferError);
         setConfirmationVisible(false);
-        await refreshRotationData(false);
-        return;
+        if (transferError.summary.transferred > 0) {
+          await loadData({ showHistoryLoader: true });
+        }
+      } else {
+        Alert.alert(
+          'Transfer Failed',
+          error instanceof Error ? error.message : 'Unable to transfer assets.',
+        );
       }
-
-      console.error('Rotation transfer failed', error);
-      setConfirmationError(
-        error instanceof Error ? error.message : 'Unable to complete the rotation transfer.',
-      );
     } finally {
       setIsTransferring(false);
     }
-  };
+  }, [isTransferring, loadData, validateTransfer]);
 
-  const renderStatusBadge = (status?: string | null) => {
-    const key = statusStyleKey(status);
-
-    return (
-      <View style={[
-        styles.statusBadge,
-        key === 'healthy' && styles.statusBadgeHealthy,
-        key === 'repairable' && styles.statusBadgeRepairable,
-        key === 'beyondRepair' && styles.statusBadgeBeyondRepair,
-      ]}
-      >
-        <Text style={[
-          styles.statusBadgeText,
-          key === 'healthy' && styles.statusTextHealthy,
-          key === 'repairable' && styles.statusTextRepairable,
-          key === 'beyondRepair' && styles.statusTextBeyondRepair,
-        ]}
-        >
-          {status || dash}
-        </Text>
-      </View>
-    );
-  };
-
-  const renderAssetRow = ({ item, index }: { item: AssetRecord; index: number }) => {
-    const assetId = getAssetId(item);
-    const selected = selectedIdSet.has(assetId);
-    const verification = getLatestVerification(item);
+  const renderVerificationBadge = useCallback((asset: AssetRecord) => {
+    const context = getVerificationContext(asset);
 
     return (
-      <TouchableOpacity
+      <View
         style={[
-          styles.tableRow,
-          index % 2 === 1 && styles.tableRowAlternate,
-          selected && styles.tableRowSelected,
+          styles.verificationBadge,
+          context.status === 'verified-current' && styles.verificationBadgeCurrent,
+          context.status === 'verified-previous' && styles.verificationBadgePrevious,
         ]}
-        activeOpacity={0.82}
-        onPress={() => handleToggleAsset(item)}
       >
-        <View style={[styles.selectCell, selected && styles.selectCellActive]}>
-          <Ionicons
-            name={selected ? 'checkmark' : 'add-outline'}
-            size={16}
-            color={selected ? '#ffffff' : PRIMARY_BLUE}
-          />
-        </View>
-        <Text style={[styles.cell, styles.assetNameCell]} numberOfLines={1}>
-          {getAssetDisplayName(item)}
+        <Text
+          numberOfLines={2}
+          style={[
+            styles.verificationBadgeText,
+            context.status === 'verified-current' && styles.verificationTextCurrent,
+            context.status === 'verified-previous' && styles.verificationTextPrevious,
+          ]}
+        >
+          {context.label}
         </Text>
-        <Text style={styles.cell} numberOfLines={1}>{item.assetNumber || dash}</Text>
-        <Text style={styles.cell} numberOfLines={1} ellipsizeMode="middle">{getAssetEpc(item)}</Text>
-        <Text style={styles.cell} numberOfLines={1}>{getAssetSection(item)}</Text>
-        <View style={styles.statusCell}>{renderStatusBadge(item.status)}</View>
-        <Text style={styles.cell} numberOfLines={1}>{getVerificationStatus(item)}</Text>
-        <Text style={styles.cell} numberOfLines={1}>{verification.section}</Text>
-        <Text style={styles.dateCell} numberOfLines={1}>{verification.verifiedAt}</Text>
-      </TouchableOpacity>
-    );
-  };
-
-  const renderLifecycleRow = ({ item, index }: { item: AssetLifecycleRecord; index: number }) => {
-    const asset = item.assetId ? assetsById.get(item.assetId) : undefined;
-    const assetName = item.assetName || (asset ? getAssetDisplayName(asset) : dash);
-    const status = item.assetStatus || item.status || asset?.status || dash;
-    const verificationStatus = item.verificationStatus || asset?.verificationStatus || dash;
-
-    return (
-      <View style={[styles.tableRow, index % 2 === 1 && styles.tableRowAlternate]}>
-        <Text style={[styles.cell, styles.assetNameCell]} numberOfLines={1}>
-          {assetName}
-        </Text>
-        <Text style={styles.cell} numberOfLines={1}>{item.assetNumber || asset?.assetNumber || dash}</Text>
-        <Text style={styles.dateCell} numberOfLines={1}>{formatDateTime(getLifecycleDate(item))}</Text>
-        <Text style={styles.cell} numberOfLines={1}>{getLifecycleFromSection(item)}</Text>
-        <Text style={styles.cell} numberOfLines={1}>{getLifecycleToSection(item)}</Text>
-        <Text style={styles.cell} numberOfLines={1}>{item.assignedBy || dash}</Text>
-        <Text style={styles.cell} numberOfLines={1}>{item.transferType || dash}</Text>
-        <Text style={styles.reasonCell} numberOfLines={1}>{item.reason || dash}</Text>
-        <View style={styles.statusCell}>{renderStatusBadge(status)}</View>
-        <Text style={styles.cell} numberOfLines={1}>{verificationStatus}</Text>
       </View>
     );
-  };
+  }, []);
 
-  const renderFilterChip = (
-    label: string,
-    selected: boolean,
-    onPress: () => void,
-  ) => (
-    <TouchableOpacity
-      key={label}
-      style={[styles.filterChip, selected && styles.filterChipActive]}
-      onPress={onPress}
-      activeOpacity={0.85}
-    >
-      <Text style={[styles.filterChipText, selected && styles.filterChipTextActive]} numberOfLines={1}>
-        {label}
-      </Text>
-    </TouchableOpacity>
+  const renderAssetRow = useCallback(
+    ({ item, index }: { item: AssetRecord; index: number }) => {
+      const assetId = getAssetId(item);
+      const selected = selectedAssetIdSet.has(assetId);
+
+      return (
+        <Pressable
+          style={[
+            styles.tableRow,
+            index % 2 === 1 && styles.tableRowAlternate,
+            selected && styles.tableRowSelected,
+          ]}
+          onPress={() => handleToggleAsset(item)}
+        >
+          <View style={[styles.cell, styles.selectCell]}>
+            <Ionicons
+              name={selected ? 'checkbox' : 'square-outline'}
+              size={20}
+              color={selected ? PRIMARY_BLUE : '#64748b'}
+            />
+          </View>
+          <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cell, styles.assetCell]}>
+            {getAssetDisplayName(item)}
+          </Text>
+          <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cell, styles.numberCell]}>
+            {item.assetNumber || dash}
+          </Text>
+          <Text numberOfLines={1} ellipsizeMode="middle" style={[styles.cell, styles.epcCell]}>
+            {getAssetEpc(item)}
+          </Text>
+          <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cell, styles.sectionCell]}>
+            {getAssetSection(item)}
+          </Text>
+          <View style={[styles.cell, styles.verificationCell]}>
+            {renderVerificationBadge(item)}
+          </View>
+        </Pressable>
+      );
+    },
+    [handleToggleAsset, renderVerificationBadge, selectedAssetIdSet],
   );
 
-  const renderResultAssetName = (assetId: string, asset?: AssetRecord) => {
-    if (asset) {
-      return getAssetDisplayName(asset);
-    }
+  const renderHistoryRow = useCallback(
+    ({ item, index }: { item: AssetLifecycleRecord; index: number }) => (
+      <View style={[styles.tableRow, index % 2 === 1 && styles.tableRowAlternate]}>
+        <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cell, styles.historyAssetCell]}>
+          {item.assetName || dash}
+        </Text>
+        <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cell, styles.historySectionCell]}>
+          {item.fromSection || dash}
+        </Text>
+        <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cell, styles.historySectionCell]}>
+          {item.toSection || dash}
+        </Text>
+        <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cell, styles.historyByCell]}>
+          {item.assignedBy || dash}
+        </Text>
+        <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cell, styles.historyDateCell]}>
+          {formatDateTime(getLifecycleDate(item))}
+        </Text>
+        <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.cell, styles.historyReasonCell]}>
+          {normalizeText(item.reason) || dash}
+        </Text>
+      </View>
+    ),
+    [],
+  );
 
-    const matched = assetsById.get(assetId);
-    return matched ? getAssetDisplayName(matched) : assetId;
-  };
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.loaderContainer}>
+        <ActivityIndicator size="large" color={PRIMARY_BLUE} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -558,49 +521,46 @@ export default function AssetsRotationScreen({ navigation }: any) {
 
           <View style={styles.headerCopy}>
             <Text style={styles.title}>Assets Rotation</Text>
-            <Text style={styles.subtitle}>Enterprise section transfer hub</Text>
+            <Text style={styles.subtitle}>Section transfer management</Text>
           </View>
         </View>
 
-        <View style={styles.countBadge}>
+        <View style={styles.countWrap}>
           <Text style={styles.countValue}>{selectedAssets.length}</Text>
           <Text style={styles.countLabel}>Selected</Text>
         </View>
       </View>
 
       <ScrollView
-        style={styles.content}
-        contentContainerStyle={styles.contentBody}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
-        {dataError ? (
-          <View style={styles.errorBanner}>
-            <Ionicons name="alert-circle-outline" size={17} color="#b91c1c" />
-            <Text style={styles.errorBannerText}>{dataError}</Text>
+        <View style={styles.summaryGrid}>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryValue}>{assets.length}</Text>
+            <Text style={styles.summaryLabel}>Total Assets</Text>
           </View>
-        ) : null}
-
-        <View style={styles.metricsRow}>
-          <View style={styles.metricPill}>
-            <Text style={styles.metricValue}>{filteredAssets.length}</Text>
-            <Text style={styles.metricLabel}>Filtered</Text>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryValue}>{filteredAssets.length}</Text>
+            <Text style={styles.summaryLabel}>Filtered</Text>
           </View>
-          <View style={styles.metricPill}>
-            <Text style={styles.metricValue}>{assets.length}</Text>
-            <Text style={styles.metricLabel}>Assets</Text>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryValue}>{selectedAssets.length}</Text>
+            <Text style={styles.summaryLabel}>Selected</Text>
           </View>
-          <View style={styles.metricPill}>
-            <Text style={styles.metricValue}>{availableSections.length}</Text>
-            <Text style={styles.metricLabel}>Sections</Text>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryValue}>{sections.length}</Text>
+            <Text style={styles.summaryLabel}>Registered Sections</Text>
           </View>
         </View>
 
-        <View style={styles.panel}>
-          <View style={styles.panelHeader}>
+        <View style={styles.filterPanel}>
+          <View style={styles.panelHeaderRow}>
             <View>
-              <Text style={styles.eyebrow}>Registry Controls</Text>
-              <Text style={styles.panelTitle}>Filter Assets</Text>
+              <Text style={styles.eyebrow}>Rotation Controls</Text>
+              <Text style={styles.panelTitle}>Search and Filter</Text>
             </View>
 
             <TouchableOpacity
@@ -613,284 +573,283 @@ export default function AssetsRotationScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
 
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search asset number, asset name, or EPC"
-            placeholderTextColor="#94a3b8"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="characters"
-            autoCorrect={false}
-          />
+          <View style={styles.searchRow}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search asset, number, EPC, or section"
+              placeholderTextColor="#94a3b8"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="characters"
+              autoCorrect={false}
+            />
 
-          <Text style={styles.filterLabel}>Section</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-            {renderFilterChip('All Sections', sectionFilter === allSectionsValue, () => setSectionFilter(allSectionsValue))}
-            {availableSections.map(section =>
-              renderFilterChip(section, sectionFilter === section, () => setSectionFilter(section)),
-            )}
-          </ScrollView>
-
-          <Text style={styles.filterLabel}>Status</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-            {renderFilterChip('All Statuses', statusFilter === allStatusesValue, () => setStatusFilter(allStatusesValue))}
-            {statusOptions.map(status =>
-              renderFilterChip(status, statusFilter === status, () => setStatusFilter(status)),
-            )}
-          </ScrollView>
-        </View>
-
-        <View style={styles.panel}>
-          <View style={styles.panelHeader}>
-            <View>
-              <Text style={styles.eyebrow}>Rotation Workflow</Text>
-              <Text style={styles.panelTitle}>Select Target Section</Text>
-            </View>
-
-            <View style={styles.syncPill}>
-              <View style={styles.syncDot} />
-              <Text style={styles.syncText}>{sectionsLoading ? 'Loading' : 'Ready'}</Text>
+            <View style={styles.filterPickerWrap}>
+              <Picker
+                selectedValue={sectionFilter}
+                onValueChange={value => setSectionFilter(String(value))}
+                style={styles.picker}
+                itemStyle={styles.pickerItem}
+                dropdownIconColor="#334155"
+              >
+                <Picker.Item label="All Sections" value={allSectionsValue} />
+                {sections.map(section => (
+                  <Picker.Item key={section} label={section} value={section} />
+                ))}
+              </Picker>
             </View>
           </View>
-
-          <View style={styles.selectionActions}>
-            <TouchableOpacity
-              style={styles.secondaryActionButton}
-              onPress={handleSelectAllFiltered}
-              activeOpacity={0.85}
-              disabled={filteredAssets.length === 0}
-            >
-              <Ionicons name="checkmark-done-outline" size={15} color={PRIMARY_BLUE} />
-              <Text style={styles.secondaryActionText}>Select Filtered</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.secondaryActionButton}
-              onPress={handleClearSelection}
-              activeOpacity={0.85}
-              disabled={selectedAssets.length === 0}
-            >
-              <Ionicons name="close-outline" size={16} color={PRIMARY_BLUE} />
-              <Text style={styles.secondaryActionText}>Clear</Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.filterLabel}>Target Section</Text>
-          {sectionsLoading && availableSections.length === 0 ? (
-            <ActivityIndicator size="small" color={PRIMARY_BLUE} style={styles.inlineLoader} />
-          ) : availableSections.length === 0 ? (
-            <View style={styles.emptyInline}>
-              <Text style={styles.emptyInlineText}>No section options are available.</Text>
-            </View>
-          ) : (
-            <View style={styles.targetGrid}>
-              {availableSections.map(section => (
-                <TouchableOpacity
-                  key={section}
-                  style={[
-                    styles.targetChip,
-                    targetSection === section && styles.targetChipActive,
-                  ]}
-                  onPress={() => setTargetSection(section)}
-                  activeOpacity={0.85}
-                >
-                  <Text
-                    style={[
-                      styles.targetChipText,
-                      targetSection === section && styles.targetChipTextActive,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {section}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          <TextInput
-            style={[styles.searchInput, styles.reasonInput]}
-            placeholder="Reason for rotation transfer"
-            placeholderTextColor="#94a3b8"
-            value={transferReason}
-            onChangeText={setTransferReason}
-            multiline
-          />
-
-          <TouchableOpacity
-            style={[
-              styles.transferButton,
-              !canOpenConfirmation && styles.transferButtonDisabled,
-            ]}
-            onPress={handleOpenConfirmation}
-            activeOpacity={0.85}
-            disabled={!canOpenConfirmation}
-          >
-            <Ionicons name="swap-horizontal-outline" size={18} color="#ffffff" />
-            <Text style={styles.transferButtonText}>Preview and Confirm Rotation</Text>
-          </TouchableOpacity>
         </View>
 
-        <View style={styles.tableSection}>
+        <View style={styles.tablePanel}>
           <View style={styles.tableHeaderBar}>
             <View>
-              <Text style={styles.eyebrow}>Asset Selection</Text>
-              <Text style={styles.tableTitle}>Section-Aware Asset Table</Text>
+              <Text style={styles.eyebrow}>Selection</Text>
+              <Text style={styles.panelTitle}>Asset Selection Table</Text>
             </View>
 
-            <View style={styles.syncPill}>
-              <View style={styles.syncDot} />
-              <Text style={styles.syncText}>{loading ? 'Syncing' : 'Current'}</Text>
+            <View style={styles.tableActions}>
+              <TouchableOpacity
+                style={[
+                  styles.secondaryButton,
+                  (filteredAssetIds.length === 0 || allFilteredSelected) && styles.buttonDisabled,
+                ]}
+                onPress={handleSelectFilteredAssets}
+                disabled={filteredAssetIds.length === 0 || allFilteredSelected}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="checkbox-outline" size={15} color={PRIMARY_BLUE} />
+                <Text style={styles.secondaryButtonText}>Select Filtered</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.secondaryButton,
+                  selectedAssetIds.length === 0 && styles.buttonDisabled,
+                ]}
+                onPress={handleClearSelection}
+                disabled={selectedAssetIds.length === 0}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="close-circle-outline" size={15} color={PRIMARY_BLUE} />
+                <Text style={styles.secondaryButtonText}>Clear</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
-          {loading ? (
-            <ActivityIndicator size="large" color={PRIMARY_BLUE} style={styles.largeLoader} />
-          ) : filteredAssets.length === 0 ? (
+          {filteredAssets.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="cube-outline" size={42} color="#94a3b8" />
-              <Text style={styles.emptyTitle}>No assets match the current filters</Text>
+              <Ionicons name="cube-outline" size={40} color="#94a3b8" />
+              <Text style={styles.emptyTitle}>No assets match the current filter</Text>
             </View>
           ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator
+              nestedScrollEnabled
+              directionalLockEnabled
+            >
               <View style={styles.assetTable}>
                 <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                  <Text style={[styles.selectHeader, styles.headerCell]} numberOfLines={1}>Select</Text>
-                  <Text style={[styles.cell, styles.assetNameCell, styles.headerCell]} numberOfLines={1}>Asset</Text>
-                  <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Asset No</Text>
-                  <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>EPC</Text>
-                  <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Section</Text>
-                  <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Status</Text>
-                  <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Verification</Text>
-                  <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Verified Section</Text>
-                  <Text style={[styles.dateCell, styles.headerCell]} numberOfLines={1}>Verified At</Text>
+                  <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.selectCell]}>
+                    Select
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.assetCell]}>
+                    Asset
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.numberCell]}>
+                    Asset Number
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.epcCell]}>
+                    EPC
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.sectionCell]}>
+                    Current Section
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.verificationCell]}>
+                    Verification Status
+                  </Text>
                 </View>
 
                 <FlatList
-                  style={styles.assetList}
-                  contentContainerStyle={styles.assetListContent}
                   data={filteredAssets}
-                  keyExtractor={item =>
-                    getAssetId(item) || normalizeText(item.assetNumber) || normalizeText(item.epc)
-                  }
+                  keyExtractor={getAssetKey}
                   renderItem={renderAssetRow}
+                  style={styles.assetList}
                   nestedScrollEnabled
-                  initialNumToRender={18}
-                  maxToRenderPerBatch={18}
-                  windowSize={8}
+                  showsVerticalScrollIndicator
+                  initialNumToRender={16}
+                  maxToRenderPerBatch={16}
+                  windowSize={7}
+                  ListFooterComponent={<View style={styles.tableFooter} />}
                 />
               </View>
             </ScrollView>
           )}
         </View>
 
-        <View style={styles.tableSection}>
-          <View style={styles.tableHeaderBar}>
+        <View style={styles.formPanel}>
+          <View style={styles.panelHeaderRow}>
             <View>
-              <Text style={styles.eyebrow}>Transfer Preview</Text>
-              <Text style={styles.tableTitle}>Selected Rotation Batch</Text>
+              <Text style={styles.eyebrow}>Transfer</Text>
+              <Text style={styles.panelTitle}>Rotation Details</Text>
             </View>
-            <Text style={styles.previewCountText}>
-              {previewRows.length} asset(s)
-            </Text>
+
+            {selectedAllAlreadyInTarget ? (
+              <View style={styles.warningPill}>
+                <Text style={styles.warningPillText}>No move needed</Text>
+              </View>
+            ) : null}
           </View>
 
-          {previewRows.length === 0 || !targetSection.trim() ? (
-            <View style={styles.emptyStateCompact}>
-              <Text style={styles.emptyTitle}>Select assets and a target section to preview the transfer.</Text>
-            </View>
-          ) : (
-            <>
-              {previewRows.slice(0, previewLimit).map(row => {
-                const verification = getLatestVerification(row.asset);
+          <Text style={styles.fieldLabel}>Target Section</Text>
+          <View style={styles.pickerShell}>
+            <Picker
+              selectedValue={targetSection}
+              onValueChange={value => setTargetSection(String(value))}
+              style={styles.picker}
+              itemStyle={styles.pickerItem}
+              dropdownIconColor="#334155"
+            >
+              <Picker.Item label="Select Section" value="" />
+              {sections.map(section => (
+                <Picker.Item key={section} label={section} value={section} />
+              ))}
+            </Picker>
+          </View>
 
-                return (
-                  <View key={row.assetId} style={styles.previewRow}>
-                    <View style={styles.previewBody}>
-                      <Text style={styles.previewAssetName} numberOfLines={1}>
-                        {getAssetDisplayName(row.asset)}
-                      </Text>
-                      <Text style={styles.previewMeta} numberOfLines={1}>
-                        {row.fromSection} to {row.toSection} | {row.asset.status || dash}
-                      </Text>
-                      <Text style={styles.previewMeta} numberOfLines={1}>
-                        Verification {getVerificationStatus(row.asset)} | Latest {verification.section} | {verification.verifiedAt}
-                      </Text>
-                    </View>
-                    <View style={[styles.previewStatePill, row.willSkip && styles.previewStatePillWarning]}>
-                      <Text style={[styles.previewStateText, row.willSkip && styles.previewStateTextWarning]}>
-                        {row.willSkip ? 'Skip' : 'Transfer'}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })}
+          <Text style={styles.fieldLabel}>Reason</Text>
+          <TextInput
+            style={styles.reasonInput}
+            placeholder="Reason for transfer"
+            placeholderTextColor="#94a3b8"
+            multiline
+            value={transferReason}
+            onChangeText={setTransferReason}
+          />
 
-              {previewRows.length > previewLimit ? (
-                <Text style={styles.limitText}>
-                  Showing {previewLimit} of {previewRows.length} selected assets.
-                </Text>
-              ) : null}
-            </>
-          )}
+          <TouchableOpacity
+            style={[styles.primaryButton, !canOpenPreview && styles.primaryButtonDisabled]}
+            onPress={handleOpenPreview}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="eye-outline" size={18} color="#ffffff" />
+            <Text style={styles.primaryButtonText}>Preview and Continue Rotation</Text>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.tableSection}>
+        <View style={styles.previewPanel}>
+          <View style={styles.panelHeaderRow}>
+            <View>
+              <Text style={styles.eyebrow}>Review</Text>
+              <Text style={styles.panelTitle}>Transfer Preview</Text>
+            </View>
+
+            {selectedAssets.length > previewLimit ? (
+              <Text style={styles.capText}>
+                Showing {previewLimit} of {selectedAssets.length}
+              </Text>
+            ) : null}
+          </View>
+
+          {selectedAssets.length === 0 ? (
+            <Text style={styles.emptyText}>No assets selected.</Text>
+          ) : (
+            previewAssets.map((asset, index) => (
+              <View key={getAssetKey(asset, index)} style={styles.previewRow}>
+                <View style={styles.previewCopy}>
+                  <Text numberOfLines={1} style={styles.previewName}>
+                    {getAssetDisplayName(asset)}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.previewMeta}>
+                    {asset.assetNumber || dash} | {getAssetEpc(asset)}
+                  </Text>
+                </View>
+
+                <Text numberOfLines={1} style={styles.previewMove}>
+                  {getAssetSection(asset)} {'->'} {targetSection || dash}
+                </Text>
+              </View>
+            ))
+          )}
+
+          {transferResult ? (
+            <View style={styles.resultPanel}>
+              <Text style={styles.resultTitle}>Latest Transfer Result</Text>
+              <View style={styles.resultGrid}>
+                <Text style={styles.resultItem}>Requested: {transferResult.summary.requested}</Text>
+                <Text style={styles.resultItem}>Transferred: {transferResult.summary.transferred}</Text>
+                <Text style={styles.resultItem}>Skipped: {transferResult.summary.skipped}</Text>
+                <Text style={styles.resultItem}>Failed: {transferResult.summary.failed}</Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.tablePanel}>
           <View style={styles.tableHeaderBar}>
             <View>
               <Text style={styles.eyebrow}>Lifecycle</Text>
-              <Text style={styles.tableTitle}>Transfer History</Text>
+              <Text style={styles.panelTitle}>Transfer History</Text>
             </View>
 
-            <View style={styles.syncPill}>
-              <View style={styles.syncDot} />
-              <Text style={styles.syncText}>{historyLoading ? 'Loading' : 'Latest'}</Text>
-            </View>
+            {history.length > historyLimit ? (
+              <Text style={styles.capText}>
+                Latest {historyLimit} of {history.length}
+              </Text>
+            ) : null}
           </View>
 
-          {historyLoading && lifecycle.length === 0 ? (
-            <ActivityIndicator size="small" color={PRIMARY_BLUE} style={styles.inlineLoader} />
-          ) : lifecycle.length === 0 ? (
-            <View style={styles.emptyStateCompact}>
-              <Text style={styles.emptyTitle}>No lifecycle records are available.</Text>
+          {historyLoading ? (
+            <ActivityIndicator color={PRIMARY_BLUE} style={styles.panelLoader} />
+          ) : historyPreview.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="time-outline" size={40} color="#94a3b8" />
+              <Text style={styles.emptyTitle}>No transfer history available</Text>
             </View>
           ) : (
-            <>
-              <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled>
-                <View style={styles.lifecycleTable}>
-                  <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                    <Text style={[styles.cell, styles.assetNameCell, styles.headerCell]} numberOfLines={1}>Asset</Text>
-                    <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Asset No</Text>
-                    <Text style={[styles.dateCell, styles.headerCell]} numberOfLines={1}>Date</Text>
-                    <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>From</Text>
-                    <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>To</Text>
-                    <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Assigned By</Text>
-                    <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Type</Text>
-                    <Text style={[styles.reasonCell, styles.headerCell]} numberOfLines={1}>Reason</Text>
-                    <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Asset Status</Text>
-                    <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Verification</Text>
-                  </View>
-
-                  <FlatList
-                    style={styles.lifecycleList}
-                    contentContainerStyle={styles.assetListContent}
-                    data={visibleLifecycle}
-                    keyExtractor={item => getLifecycleKey(item)}
-                    renderItem={renderLifecycleRow}
-                    nestedScrollEnabled
-                    initialNumToRender={12}
-                    maxToRenderPerBatch={12}
-                    windowSize={6}
-                  />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator
+              nestedScrollEnabled
+              directionalLockEnabled
+            >
+              <View style={styles.historyTable}>
+                <View style={[styles.tableRow, styles.tableHeaderRow]}>
+                  <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.historyAssetCell]}>
+                    Asset
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.historySectionCell]}>
+                    From
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.historySectionCell]}>
+                    To
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.historyByCell]}>
+                    By
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.historyDateCell]}>
+                    Date
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.cell, styles.headerCell, styles.historyReasonCell]}>
+                    Reason
+                  </Text>
                 </View>
-              </ScrollView>
 
-              {lifecycle.length > lifecycleLimit ? (
-                <Text style={styles.limitText}>
-                  Showing latest {lifecycleLimit} of {lifecycle.length} lifecycle records.
-                </Text>
-              ) : null}
-            </>
+                <FlatList
+                  data={historyPreview}
+                  keyExtractor={getHistoryKey}
+                  renderItem={renderHistoryRow}
+                  style={styles.historyList}
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator
+                  initialNumToRender={12}
+                  maxToRenderPerBatch={12}
+                  windowSize={6}
+                  ListFooterComponent={<View style={styles.tableFooter} />}
+                />
+              </View>
+            </ScrollView>
           )}
         </View>
       </ScrollView>
@@ -913,150 +872,61 @@ export default function AssetsRotationScreen({ navigation }: any) {
             }
           }}
         >
-          <Pressable style={styles.confirmModal} onPress={() => undefined}>
+          <Pressable style={styles.modalCard} onPress={() => undefined}>
             <View style={styles.modalHeader}>
               <View>
-                <Text style={styles.eyebrow}>Confirm Transfer</Text>
-                <Text style={styles.modalTitle}>Rotate {selectedAssets.length} asset(s)</Text>
+                <Text style={styles.eyebrow}>Confirmation</Text>
+                <Text style={styles.modalTitle}>Confirm Rotation</Text>
               </View>
+
               <TouchableOpacity
-                style={styles.modalCloseButton}
+                style={[styles.modalCloseButton, isTransferring && styles.buttonDisabled]}
                 onPress={() => setConfirmationVisible(false)}
-                activeOpacity={0.85}
                 disabled={isTransferring}
+                activeOpacity={0.85}
               >
                 <Ionicons name="close-outline" size={22} color="#0f172a" />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.confirmSummary}>
-              <Text style={styles.confirmLine}>Target section: {targetSection || dash}</Text>
-              <Text style={styles.confirmLine}>Transfer type: rotation</Text>
-              <Text style={styles.confirmLine}>
-                Predicted skips: {previewRows.filter(row => row.willSkip).length}
-              </Text>
-              <Text style={styles.confirmLine}>
-                Reason: {transferReason.trim() || dash}
-              </Text>
+            <View style={styles.modalSummary}>
+              <View style={styles.modalRow}>
+                <Text style={styles.modalLabel}>Assets</Text>
+                <Text style={styles.modalValue}>{selectedAssets.length}</Text>
+              </View>
+              <View style={styles.modalRow}>
+                <Text style={styles.modalLabel}>Target</Text>
+                <Text numberOfLines={1} style={styles.modalValue}>{targetSection || dash}</Text>
+              </View>
+              <View style={styles.modalRow}>
+                <Text style={styles.modalLabel}>Reason</Text>
+                <Text numberOfLines={3} style={styles.modalValue}>{transferReason || dash}</Text>
+              </View>
             </View>
-
-            {confirmationError ? (
-              <Text style={styles.confirmationError}>{confirmationError}</Text>
-            ) : null}
 
             <View style={styles.modalActions}>
               <TouchableOpacity
-                style={styles.cancelButton}
+                style={[styles.modalButton, styles.modalCancelButton, isTransferring && styles.buttonDisabled]}
                 onPress={() => setConfirmationVisible(false)}
-                activeOpacity={0.85}
                 disabled={isTransferring}
+                activeOpacity={0.85}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.confirmButton, isTransferring && styles.transferButtonDisabled]}
-                onPress={handleConfirmTransfer}
-                activeOpacity={0.85}
+                style={[styles.modalButton, styles.modalConfirmButton, isTransferring && styles.buttonDisabled]}
+                onPress={handleTransfer}
                 disabled={isTransferring}
+                activeOpacity={0.85}
               >
                 {isTransferring ? (
                   <ActivityIndicator size="small" color="#ffffff" />
                 ) : (
-                  <>
-                    <Ionicons name="checkmark-circle-outline" size={17} color="#ffffff" />
-                    <Text style={styles.confirmButtonText}>Execute Transfer</Text>
-                  </>
+                  <Text style={styles.modalConfirmText}>Confirm Transfer</Text>
                 )}
               </TouchableOpacity>
             </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      <Modal
-        visible={Boolean(transferResult)}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setTransferResult(null)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setTransferResult(null)}>
-          <Pressable style={styles.resultModal} onPress={() => undefined}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.eyebrow}>Transfer Result</Text>
-                <Text style={styles.modalTitle}>
-                  {transferResult?.summary.failed
-                    ? 'Completed with issues'
-                    : transferResult?.summary.skipped
-                      ? 'Completed with skips'
-                      : 'Transfer complete'}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.modalCloseButton}
-                onPress={() => setTransferResult(null)}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="close-outline" size={22} color="#0f172a" />
-              </TouchableOpacity>
-            </View>
-
-            {transferResult ? (
-              <ScrollView style={styles.resultScroll} showsVerticalScrollIndicator>
-                <View style={styles.resultGrid}>
-                  <View style={styles.resultPill}>
-                    <Text style={styles.resultValue}>{transferResult.summary.requested}</Text>
-                    <Text style={styles.resultLabel}>Requested</Text>
-                  </View>
-                  <View style={styles.resultPill}>
-                    <Text style={styles.resultValue}>{transferResult.summary.transferred}</Text>
-                    <Text style={styles.resultLabel}>Transferred</Text>
-                  </View>
-                  <View style={styles.resultPill}>
-                    <Text style={styles.resultValue}>{transferResult.summary.skipped}</Text>
-                    <Text style={styles.resultLabel}>Skipped</Text>
-                  </View>
-                  <View style={styles.resultPill}>
-                    <Text style={styles.resultValue}>{transferResult.summary.failed}</Text>
-                    <Text style={styles.resultLabel}>Failed</Text>
-                  </View>
-                </View>
-
-                {transferResult.transferred.length > 0 ? (
-                  <View style={styles.resultSection}>
-                    <Text style={styles.resultSectionTitle}>Transferred</Text>
-                    {transferResult.transferred.slice(0, 12).map(item => (
-                      <Text key={item.assetId} style={styles.resultLine} numberOfLines={2}>
-                        {renderResultAssetName(item.assetId, item.asset)}: {item.fromSection || dash} to {item.toSection}
-                      </Text>
-                    ))}
-                  </View>
-                ) : null}
-
-                {transferResult.skipped.length > 0 ? (
-                  <View style={styles.resultSection}>
-                    <Text style={styles.resultSectionTitle}>Skipped</Text>
-                    {transferResult.skipped.map(item => (
-                      <Text key={item.assetId} style={styles.resultLine} numberOfLines={2}>
-                        {renderResultAssetName(item.assetId)}: {item.reason || 'skipped'}
-                      </Text>
-                    ))}
-                  </View>
-                ) : null}
-
-                {transferResult.errors.length > 0 ? (
-                  <View style={styles.resultSection}>
-                    <Text style={styles.resultSectionTitle}>Failures</Text>
-                    {transferResult.errors.map(item => (
-                      <Text key={item.assetId} style={styles.resultErrorLine} numberOfLines={3}>
-                        {renderResultAssetName(item.assetId)}: {item.message}
-                      </Text>
-                    ))}
-                  </View>
-                ) : null}
-              </ScrollView>
-            ) : null}
           </Pressable>
         </Pressable>
       </Modal>
@@ -1069,6 +939,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f4f6f8',
     marginTop: 25,
+  },
+  loaderContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f4f6f8',
   },
   header: {
     flexDirection: 'row',
@@ -1105,11 +981,11 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   subtitle: {
+    marginTop: 2,
     fontSize: 11,
     color: '#64748b',
-    marginTop: 2,
   },
-  countBadge: {
+  countWrap: {
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#eff6ff',
@@ -1126,63 +1002,41 @@ const styles = StyleSheet.create({
     color: PRIMARY_BLUE,
   },
   countLabel: {
+    marginTop: 1,
     fontSize: 10,
     color: '#64748b',
-    marginTop: 1,
   },
   content: {
-    flex: 1,
-  },
-  contentBody: {
     padding: 10,
-    paddingBottom: 22,
+    paddingBottom: 38,
   },
-  errorBanner: {
-    minHeight: 42,
-    borderRadius: 8,
-    backgroundColor: '#fef2f2',
-    borderWidth: 1,
-    borderColor: '#fecaca',
+  summaryGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  summaryCard: {
+    width: '48.5%',
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dbe2ea',
+    paddingVertical: 12,
     paddingHorizontal: 12,
     marginBottom: 10,
   },
-  errorBannerText: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#991b1b',
-  },
-  metricsRow: {
-    flexDirection: 'row',
-    marginHorizontal: -4,
-    marginBottom: 10,
-  },
-  metricPill: {
-    flex: 1,
-    minHeight: 58,
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#dbe2ea',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 4,
-  },
-  metricValue: {
-    fontSize: 17,
+  summaryValue: {
+    fontSize: 18,
     fontWeight: '800',
     color: '#0f172a',
   },
-  metricLabel: {
-    marginTop: 2,
-    fontSize: 10,
-    fontWeight: '700',
+  summaryLabel: {
+    marginTop: 4,
+    fontSize: 11,
     color: '#64748b',
+    fontWeight: '600',
   },
-  panel: {
+  filterPanel: {
     backgroundColor: '#ffffff',
     borderRadius: 10,
     borderWidth: 1,
@@ -1190,11 +1044,52 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 10,
   },
-  panelHeader: {
+  tablePanel: {
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dbe2ea',
+    padding: 10,
+    marginBottom: 10,
+  },
+  formPanel: {
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dbe2ea',
+    padding: 12,
+    marginBottom: 10,
+  },
+  previewPanel: {
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dbe2ea',
+    padding: 12,
+    marginBottom: 10,
+  },
+  panelHeaderRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 10,
+    gap: 10,
+  },
+  tableHeaderBar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    gap: 10,
+  },
+  tableActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
   },
   eyebrow: {
     fontSize: 10,
@@ -1222,9 +1117,17 @@ const styles = StyleSheet.create({
     marginLeft: 5,
     fontSize: 12,
     fontWeight: '800',
-    color: '#1d4ed8',
+    color: PRIMARY_BLUE,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
   },
   searchInput: {
+    flex: 1,
+    minWidth: 180,
     minHeight: 44,
     borderRadius: 8,
     borderWidth: 1,
@@ -1234,209 +1137,121 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#0f172a',
   },
-  reasonInput: {
-    marginTop: 10,
-    minHeight: 76,
-    paddingTop: 10,
-    textAlignVertical: 'top',
+  filterPickerWrap: {
+    width: 220,
+    minHeight: 54,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  filterLabel: {
-    marginTop: 12,
+  pickerShell: {
+    minHeight: 54,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  picker: {
+    minHeight: 54,
+    width: '100%',
+    color: '#0f172a',
+    backgroundColor: 'transparent',
+  },
+  pickerItem: {
+    fontSize: 13,
+    color: '#0f172a',
+  },
+  fieldLabel: {
+    marginTop: 2,
     marginBottom: 6,
     fontSize: 11,
     fontWeight: '800',
     color: '#475569',
     textTransform: 'uppercase',
   },
-  chipScroll: {
-    marginRight: -12,
-  },
-  filterChip: {
-    maxWidth: 190,
-    minHeight: 34,
+  reasonInput: {
+    minHeight: 88,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#cbd5e1',
-    backgroundColor: '#f8fafc',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-    marginRight: 8,
-  },
-  filterChipActive: {
-    borderColor: '#bfdbfe',
-    backgroundColor: '#eff6ff',
-  },
-  filterChipText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#334155',
-  },
-  filterChipTextActive: {
-    color: PRIMARY_BLUE,
-  },
-  selectionActions: {
-    flexDirection: 'row',
-    marginHorizontal: -4,
-  },
-  secondaryActionButton: {
-    flex: 1,
-    minHeight: 38,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-    backgroundColor: '#eff6ff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    marginHorizontal: 4,
-  },
-  secondaryActionText: {
-    marginLeft: 6,
-    fontSize: 12,
-    fontWeight: '800',
-    color: PRIMARY_BLUE,
-  },
-  inlineLoader: {
-    marginVertical: 14,
-  },
-  emptyInline: {
-    minHeight: 42,
-    borderRadius: 8,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    justifyContent: 'center',
+    backgroundColor: '#ffffff',
     paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 10,
+    fontSize: 13,
+    color: '#0f172a',
+    textAlignVertical: 'top',
+    marginBottom: 12,
   },
-  emptyInlineText: {
-    fontSize: 12,
-    color: '#64748b',
-  },
-  targetGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -4,
-    marginBottom: -8,
-  },
-  targetChip: {
-    maxWidth: '48%',
-    minHeight: 36,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#f8fafc',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-    marginHorizontal: 4,
-    marginBottom: 8,
-  },
-  targetChipActive: {
-    borderColor: '#1d4ed8',
-    backgroundColor: '#dbeafe',
-  },
-  targetChipText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#334155',
-  },
-  targetChipTextActive: {
-    color: '#1d4ed8',
-  },
-  transferButton: {
-    marginTop: 12,
+  primaryButton: {
     minHeight: 44,
     borderRadius: 8,
     backgroundColor: PRIMARY_BLUE,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
+    paddingHorizontal: 12,
   },
-  transferButtonDisabled: {
-    opacity: 0.58,
+  primaryButtonDisabled: {
+    opacity: 0.62,
   },
-  transferButtonText: {
+  primaryButtonText: {
     marginLeft: 8,
     fontSize: 13,
     fontWeight: '800',
     color: '#ffffff',
   },
-  tableSection: {
-    backgroundColor: '#ffffff',
-    borderRadius: 10,
+  secondaryButton: {
+    minHeight: 34,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#dbe2ea',
-    padding: 10,
-    marginBottom: 10,
-  },
-  tableHeaderBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-    paddingHorizontal: 4,
-  },
-  tableTitle: {
-    marginTop: 3,
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  syncPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 999,
-    backgroundColor: '#dcfce7',
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  syncDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#16a34a',
-    marginRight: 6,
-  },
-  syncText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#166534',
-  },
-  previewCountText: {
+  secondaryButtonText: {
+    marginLeft: 5,
     fontSize: 12,
     fontWeight: '800',
     color: PRIMARY_BLUE,
   },
-  largeLoader: {
-    marginVertical: 34,
+  buttonDisabled: {
+    opacity: 0.55,
   },
-  emptyState: {
-    minHeight: 180,
-    alignItems: 'center',
-    justifyContent: 'center',
+  warningPill: {
+    borderRadius: 999,
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  emptyStateCompact: {
-    minHeight: 86,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  emptyTitle: {
-    marginTop: 10,
-    fontSize: 14,
+  warningPillText: {
+    fontSize: 11,
     fontWeight: '800',
-    color: '#334155',
-    textAlign: 'center',
+    color: '#92400e',
+  },
+  capText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
   },
   assetTable: {
-    minWidth: 1220,
+    minWidth: 910,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#dbe2ea',
     backgroundColor: '#ffffff',
     overflow: 'hidden',
   },
-  lifecycleTable: {
-    minWidth: 1380,
+  historyTable: {
+    minWidth: 1000,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#dbe2ea',
@@ -1444,21 +1259,19 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   assetList: {
-    maxHeight: 380,
+    maxHeight: 420,
   },
-  lifecycleList: {
-    maxHeight: 280,
-  },
-  assetListContent: {
-    paddingBottom: 6,
-  },
-  tableHeaderRow: {
-    backgroundColor: '#f8fafc',
+  historyList: {
+    maxHeight: 360,
   },
   tableRow: {
     flexDirection: 'row',
+    alignItems: 'stretch',
     borderBottomWidth: 1,
     borderBottomColor: '#edf2f7',
+  },
+  tableHeaderRow: {
+    backgroundColor: '#f8fafc',
   },
   tableRowAlternate: {
     backgroundColor: '#f8fafc',
@@ -1466,51 +1279,9 @@ const styles = StyleSheet.create({
   tableRowSelected: {
     backgroundColor: '#eff6ff',
   },
-  selectHeader: {
-    width: 70,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRightWidth: 1,
-    borderRightColor: '#e2e8f0',
-    fontSize: 11,
-  },
-  selectCell: {
-    width: 70,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    borderRightWidth: 1,
-    borderRightColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectCellActive: {
-    backgroundColor: PRIMARY_BLUE,
-  },
   cell: {
     width: 120,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRightWidth: 1,
-    borderRightColor: '#e2e8f0',
-    fontSize: 11,
-    color: '#0f172a',
-    overflow: 'hidden',
-  },
-  assetNameCell: {
-    width: 160,
-  },
-  dateCell: {
-    width: 170,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRightWidth: 1,
-    borderRightColor: '#e2e8f0',
-    fontSize: 11,
-    color: '#0f172a',
-    overflow: 'hidden',
-  },
-  reasonCell: {
-    width: 180,
+    minHeight: 44,
     paddingVertical: 10,
     paddingHorizontal: 8,
     borderRightWidth: 1,
@@ -1520,97 +1291,155 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   headerCell: {
+    minHeight: 40,
     fontWeight: '800',
     color: '#0f172a',
     backgroundColor: '#f8fafc',
   },
-  statusCell: {
-    width: 120,
-    paddingVertical: 7,
-    paddingHorizontal: 8,
-    borderRightWidth: 1,
-    borderRightColor: '#e2e8f0',
+  selectCell: {
+    width: 72,
+    alignItems: 'center',
     justifyContent: 'center',
+    textAlign: 'center',
   },
-  statusBadge: {
+  assetCell: {
+    width: 190,
+  },
+  numberCell: {
+    width: 130,
+  },
+  epcCell: {
+    width: 190,
+  },
+  sectionCell: {
+    width: 150,
+  },
+  verificationCell: {
+    width: 178,
+    justifyContent: 'center',
+    borderRightWidth: 0,
+  },
+  historyAssetCell: {
+    width: 190,
+  },
+  historySectionCell: {
+    width: 140,
+  },
+  historyByCell: {
+    width: 150,
+  },
+  historyDateCell: {
+    width: 180,
+  },
+  historyReasonCell: {
+    width: 220,
+    borderRightWidth: 0,
+  },
+  verificationBadge: {
     alignSelf: 'flex-start',
     borderRadius: 999,
+    backgroundColor: '#f1f5f9',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    backgroundColor: '#f1f5f9',
   },
-  statusBadgeHealthy: {
+  verificationBadgeCurrent: {
     backgroundColor: '#dcfce7',
   },
-  statusBadgeRepairable: {
+  verificationBadgePrevious: {
     backgroundColor: '#fef3c7',
   },
-  statusBadgeBeyondRepair: {
-    backgroundColor: '#fee2e2',
-  },
-  statusBadgeText: {
+  verificationBadgeText: {
     fontSize: 10,
     fontWeight: '800',
     color: '#475569',
   },
-  statusTextHealthy: {
+  verificationTextCurrent: {
     color: '#166534',
   },
-  statusTextRepairable: {
+  verificationTextPrevious: {
     color: '#92400e',
   },
-  statusTextBeyondRepair: {
-    color: '#991b1b',
+  tableFooter: {
+    height: 8,
+  },
+  emptyState: {
+    minHeight: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: {
+    marginTop: 10,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#334155',
+    textAlign: 'center',
+  },
+  emptyText: {
+    fontSize: 13,
+    color: '#64748b',
+  },
+  panelLoader: {
+    marginVertical: 24,
   },
   previewRow: {
-    minHeight: 70,
-    borderRadius: 8,
+    minHeight: 50,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#f8fafc',
+    borderColor: '#edf2f7',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
-    marginBottom: 8,
+    justifyContent: 'space-between',
+    gap: 10,
   },
-  previewBody: {
+  previewCopy: {
     flex: 1,
     minWidth: 0,
-    marginRight: 10,
   },
-  previewAssetName: {
+  previewName: {
     fontSize: 13,
     fontWeight: '800',
     color: '#0f172a',
   },
   previewMeta: {
-    marginTop: 3,
+    marginTop: 2,
     fontSize: 11,
-    fontWeight: '700',
     color: '#64748b',
   },
-  previewStatePill: {
-    borderRadius: 999,
-    backgroundColor: '#dcfce7',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  previewMove: {
+    flex: 1,
+    minWidth: 120,
+    textAlign: 'right',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
   },
-  previewStatePillWarning: {
-    backgroundColor: '#fef3c7',
+  resultPanel: {
+    marginTop: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
+    padding: 10,
   },
-  previewStateText: {
-    fontSize: 11,
+  resultTitle: {
+    fontSize: 12,
     fontWeight: '800',
-    color: '#166534',
+    color: PRIMARY_BLUE,
+    marginBottom: 6,
   },
-  previewStateTextWarning: {
-    color: '#92400e',
+  resultGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
-  limitText: {
-    marginTop: 8,
-    fontSize: 11,
+  resultItem: {
+    minWidth: 110,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#64748b',
+    color: '#334155',
   },
   modalOverlay: {
     flex: 1,
@@ -1618,20 +1447,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 18,
   },
-  confirmModal: {
+  modalCard: {
     backgroundColor: '#ffffff',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#dbe2ea',
     padding: 16,
-  },
-  resultModal: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#dbe2ea',
-    padding: 16,
-    maxHeight: '82%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1644,124 +1465,65 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '800',
     color: '#0f172a',
-    maxWidth: 260,
   },
   modalCloseButton: {
-    width: 38,
-    height: 38,
+    width: 36,
+    height: 36,
     borderRadius: 8,
     backgroundColor: '#f1f5f9',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  confirmSummary: {
-    borderRadius: 8,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 12,
+  modalSummary: {
+    borderTopWidth: 1,
+    borderTopColor: '#edf2f7',
   },
-  confirmLine: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#334155',
-    marginBottom: 5,
+  modalRow: {
+    minHeight: 44,
+    borderBottomWidth: 1,
+    borderBottomColor: '#edf2f7',
+    paddingVertical: 8,
   },
-  confirmationError: {
-    marginTop: 10,
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#b91c1c',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    marginTop: 16,
-  },
-  cancelButton: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: 8,
-    backgroundColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  cancelButtonText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#334155',
-  },
-  confirmButton: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: 8,
-    backgroundColor: PRIMARY_BLUE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    marginLeft: 8,
-  },
-  confirmButtonText: {
-    marginLeft: 7,
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#ffffff',
-  },
-  resultScroll: {
-    maxHeight: 520,
-  },
-  resultGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -4,
-    marginBottom: 10,
-  },
-  resultPill: {
-    width: '48%',
-    minHeight: 62,
-    borderRadius: 8,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 4,
-    marginBottom: 8,
-  },
-  resultValue: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  resultLabel: {
-    marginTop: 2,
+  modalLabel: {
     fontSize: 10,
     fontWeight: '800',
     color: '#64748b',
     textTransform: 'uppercase',
   },
-  resultSection: {
-    borderTopWidth: 1,
-    borderTopColor: '#edf2f7',
-    paddingTop: 10,
-    marginTop: 6,
-  },
-  resultSectionTitle: {
-    fontSize: 12,
-    fontWeight: '800',
+  modalValue: {
+    marginTop: 3,
+    fontSize: 13,
+    fontWeight: '700',
     color: '#0f172a',
-    marginBottom: 6,
   },
-  resultLine: {
-    fontSize: 12,
-    fontWeight: '700',
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 14,
+    gap: 10,
+  },
+  modalButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  modalCancelButton: {
+    backgroundColor: '#f1f5f9',
+  },
+  modalConfirmButton: {
+    backgroundColor: PRIMARY_BLUE,
+  },
+  modalCancelText: {
+    fontSize: 13,
+    fontWeight: '800',
     color: '#334155',
-    marginBottom: 5,
   },
-  resultErrorLine: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#b91c1c',
-    marginBottom: 5,
+  modalConfirmText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#ffffff',
   },
 });

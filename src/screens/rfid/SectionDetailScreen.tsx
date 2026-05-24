@@ -17,15 +17,16 @@ import { RouteProp, useRoute } from '@react-navigation/native';
 import { Alert } from 'react-native';
 
 import {
-  AssetRecord,
   fetchAssetsBySection,
   fetchSectionsSummary,
   getAssetDisplayName,
-  SectionSummary,
+  type AssetRecord,
+  type SectionSummary,
 } from '../../services/assetApi';
 import { exportSectionDetailToPdf } from '../../utils/assetPdfExport';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
 import { useSectionAwareRefresh } from './hooks/useSectionAwareRefresh';
+import { getVerificationContext } from '../../utils/verificationSemantics';
 
 type SectionDetailRouteParams = {
   SectionDetailScreen: {
@@ -39,7 +40,7 @@ const formatDateTime = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : dash;
 
 const getAssetSection = (asset: AssetRecord) =>
-  asset.section || asset.department || asset.category || asset.location || dash;
+  asset.section || dash;
 
 const getAssetEpc = (asset: AssetRecord) => asset.epc || asset.epcKey || dash;
 
@@ -50,6 +51,19 @@ const statusStyleKey = (status?: string | null) => {
   if (normalized === 'repairable') return 'repairable';
   if (normalized === 'beyond repair') return 'beyondRepair';
   return 'neutral';
+};
+
+const getVerificationLabel = (asset: AssetRecord) =>
+  getVerificationContext(asset).label;
+
+const getLastVerifiedDisplay = (asset: AssetRecord) => {
+  const context = getVerificationContext(asset);
+
+  if (!context.lastMatchedSection || !context.lastMatchedAt) {
+    return dash;
+  }
+
+  return `${context.lastMatchedSection} | ${formatDateTime(context.lastMatchedAt)}`;
 };
 
 export default function SectionDetailScreen({ navigation }: any) {
@@ -246,6 +260,8 @@ export default function SectionDetailScreen({ navigation }: any) {
                 <Text numberOfLines={1} style={[styles.cell, styles.headerCell]}>Asset No</Text>
                 <Text numberOfLines={1} style={[styles.cell, styles.headerCell]}>EPC</Text>
                 <Text numberOfLines={1} style={[styles.cell, styles.headerCell]}>Status</Text>
+                <Text numberOfLines={1} style={[styles.verificationCell, styles.headerCell]}>Verification</Text>
+                <Text numberOfLines={1} style={[styles.lastVerifiedCell, styles.headerCell]}>Last Verified</Text>
                 <Text numberOfLines={1} style={[styles.cell, styles.headerCell]}>Serial No</Text>
                 <Text numberOfLines={1} style={[styles.cell, styles.headerCell]}>Created</Text>
                 <Text numberOfLines={1} style={[styles.cell, styles.headerCell]}>Updated</Text>
@@ -275,6 +291,12 @@ export default function SectionDetailScreen({ navigation }: any) {
                       style={[styles.cell, styles.statusCell, styles[`status_${statusKey}`]]}
                     >
                       {asset.status || dash}
+                    </Text>
+                    <Text numberOfLines={2} ellipsizeMode="tail" style={styles.verificationCell}>
+                      {getVerificationLabel(asset)}
+                    </Text>
+                    <Text numberOfLines={2} ellipsizeMode="tail" style={styles.lastVerifiedCell}>
+                      {getLastVerifiedDisplay(asset)}
                     </Text>
                     <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>
                       {asset.serialNumber || dash}
@@ -325,7 +347,8 @@ export default function SectionDetailScreen({ navigation }: any) {
                   ['Section', getAssetSection(selectedAsset)],
                   ['Status', selectedAsset.status || dash],
                   ['Serial Number', selectedAsset.serialNumber || dash],
-                  ['Verification Status', selectedAsset.verificationStatus || dash],
+                  ['Verification Context', getVerificationLabel(selectedAsset)],
+                  ['Last Verified', getLastVerifiedDisplay(selectedAsset)],
                   ['Assigned By', selectedAsset.assignmentInformation?.assignedBy || dash],
                   ['Assigned At', formatDateTime(selectedAsset.assignmentInformation?.assignedAt)],
                   ['Created', formatDateTime(selectedAsset.createdAt)],
@@ -502,7 +525,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#dbe2ea',
     overflow: 'hidden',
-    minWidth: 820,
+    minWidth: 1120,
   },
   tableHeader: {
     backgroundColor: '#f8fafc',
@@ -520,6 +543,27 @@ const styles = StyleSheet.create({
   },
   cell: {
     width: 118,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    fontSize: 11,
+    color: '#0f172a',
+    borderRightWidth: 1,
+    borderRightColor: '#e2e8f0',
+    overflow: 'hidden',
+  },
+  verificationCell: {
+    width: 150,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    fontSize: 11,
+    color: '#0f172a',
+    borderRightWidth: 1,
+    borderRightColor: '#e2e8f0',
+    overflow: 'hidden',
+    fontWeight: '700',
+  },
+  lastVerifiedCell: {
+    width: 190,
     paddingVertical: 10,
     paddingHorizontal: 8,
     fontSize: 11,

@@ -507,7 +507,7 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
   table: {
-    minWidth: 924,
+    minWidth: 1056,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#dbe2ea',

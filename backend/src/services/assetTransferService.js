@@ -27,12 +27,23 @@ const normalizeTransferType = (value) => {
 };
 
 /**
- * Phase 5 hook — no behavior change in Phase 2.
- * @param {import('mongoose').Document} _asset
- * @param {{ fromSection: string|null, toSection: string }} _context
+ * Verification is contextual to the current section. Historical audit records
+ * stay immutable, but movement resets the current verification marker.
+ *
+ * @param {import('mongoose').Document} asset
+ * @param {{ fromSection: string|null, toSection: string }} context
  */
-const applyVerificationPolicyOnTransfer = (_asset, _context) => {
-  // Intentionally empty until Phase 5 verification policy is implemented.
+const applyVerificationPolicyOnTransfer = (asset, context) => {
+  const fromSection = trimString(context.fromSection || "");
+  const toSection = trimString(context.toSection || "");
+
+  if (!toSection || fromSection.toLowerCase() === toSection.toLowerCase()) {
+    return;
+  }
+
+  asset.verificationStatus = "Pending";
+  asset.verifiedAt = null;
+  asset.verifiedBy = null;
 };
 
 const assertTargetSectionExists = async (toSection) => {

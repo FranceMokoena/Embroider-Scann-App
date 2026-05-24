@@ -20,10 +20,11 @@ import styles from './styles/verifyAssetStyles';
 import { normalizeEpc } from '../../rfid/chainwayRfid';
 import { useRFIDStreamController } from '../../rfid/RFIDStreamController';
 import { apiRequest } from '../../config/api';
-import { fetchSectionOptions } from '../../services/assetApi';
+import { fetchSectionOptions, type AssetRecord } from '../../services/assetApi';
 import { notifyAssetUpdated } from '../../services/assetSync';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
 import { useSectionAwareRefresh } from './hooks/useSectionAwareRefresh';
+import { getVerificationContext } from '../../utils/verificationSemantics';
 
 export default function VerifyAsset({ navigation }: any) {
   const { controller, snapshot } = useRFIDStreamController();
@@ -205,7 +206,10 @@ export default function VerifyAsset({ navigation }: any) {
   };
 
   const getAssetSection = (asset: any) =>
-    String(asset?.section || asset?.department || asset?.category || asset?.location || '').trim();
+    String(asset?.section || '').trim();
+
+  const getContextualVerificationLabel = (asset: AssetRecord) =>
+    getVerificationContext(asset).label;
 
   const buildAuditRows = (
     expectedAssets: any[],
@@ -224,7 +228,7 @@ export default function VerifyAsset({ navigation }: any) {
       .map(epc => ({
         ...expectedByEpc.get(epc),
         auditResult: 'Matched',
-        verificationStatus: 'Pending',
+        verificationStatus: getContextualVerificationLabel(expectedByEpc.get(epc)),
       }));
 
     const missingAssets = expectedAssets
@@ -232,7 +236,7 @@ export default function VerifyAsset({ navigation }: any) {
       .map((asset: any) => ({
         ...asset,
         auditResult: 'Missing',
-        verificationStatus: 'Pending',
+        verificationStatus: getContextualVerificationLabel(asset),
       }));
 
     const unexpectedAssets = uniqueEpcs
@@ -243,7 +247,7 @@ export default function VerifyAsset({ navigation }: any) {
       .map(epc => ({
         ...scannedByEpc.get(epc),
         auditResult: 'Unexpected',
-        verificationStatus: 'Pending',
+        verificationStatus: getContextualVerificationLabel(scannedByEpc.get(epc)),
       }));
 
     const unregisteredTags = uniqueEpcs
@@ -494,7 +498,7 @@ export default function VerifyAsset({ navigation }: any) {
         previous.map(asset => {
           if (!asset.epc) return asset;
           if (matchedEpcs.has(asset.epc)) {
-            return { ...asset, verificationStatus: 'Verified' };
+            return { ...asset, verificationStatus: 'Verified In Current Section' };
           }
           if (missingEpcs.has(asset.epc)) {
             return { ...asset, verificationStatus: 'Missing' };
@@ -797,6 +801,7 @@ export default function VerifyAsset({ navigation }: any) {
                       <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>EPC</Text>
                       <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Section</Text>
                       <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Status</Text>
+                      <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Verification</Text>
                       <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Serial Number</Text>
                       <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Created Date</Text>
                     </View>
@@ -811,6 +816,9 @@ export default function VerifyAsset({ navigation }: any) {
                         <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.epc || '—'}</Text>
                         <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{getAssetSection(asset) || '—'}</Text>
                         <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.status || '—'}</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>
+                          {asset.verificationStatus || 'Pending Verification'}
+                        </Text>
                         <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.serialNumber || '—'}</Text>
                         <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>
                           {asset.createdAt ? new Date(asset.createdAt).toLocaleDateString() : '—'}

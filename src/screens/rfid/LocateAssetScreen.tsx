@@ -17,7 +17,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import CampusTrackingMap from './components/CampusTrackingMap';
 import { useCampusProximityTracker } from './hooks/useCampusProximityTracker';
 import { apiRequest } from '../../config/api';
-import { fetchAssetById, getAssetId } from '../../services/assetApi';
+import { fetchAssetById } from '../../services/assetApi';
 import { useSectionAwareRefresh } from './hooks/useSectionAwareRefresh';
 import { normalizeEpc } from '../../rfid/chainwayRfid';
 import { useRFIDStreamController } from '../../rfid/RFIDStreamController';
