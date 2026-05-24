@@ -41,6 +41,11 @@ const normalizeOptionalString = value => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+const getAssetSection = asset =>
+  normalizeOptionalString(asset?.section)
+  || normalizeOptionalString(asset?.category)
+  || normalizeOptionalString(asset?.location);
+
 const withSession = (query, session) => (session ? query.session(session) : query);
 
 const isDuplicateKeyError = error => error && error.code === 11000;
@@ -68,10 +73,7 @@ const mapAsset = asset => {
     assetNumber: asset.assetNumber,
     serialNumber: asset.serialNumber || null,
     status: asset.status || null,
-    location: asset.location || null,
-    category: asset.category || null,
-    department: asset.category || null,
-    section: asset.category || null,
+    section: getAssetSection(asset) || null,
     verificationStatus: asset.verificationStatus || null,
     verifiedAt: asset.verifiedAt || null,
     verifiedBy: asset.verifiedBy ? String(asset.verifiedBy) : null,

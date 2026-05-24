@@ -41,7 +41,7 @@ export default function BulkAssetCreate({ navigation }: any) {
   const [assetName, setAssetName] = useState('');
   const [assetNumber, setAssetNumber] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
-  const [department, setDepartment] = useState('');
+  const [section, setSection] = useState('');
   const [status, setStatus] = useState('Healthy');
   // ADD THIS STATE ABOVE
 const [statusOpen, setStatusOpen] = useState(false);
@@ -119,7 +119,7 @@ const [statusOpen, setStatusOpen] = useState(false);
     if (
       !assetName ||
       !assetNumber ||
-      !department ||
+      !section ||
       !status
     ) {
       Alert.alert(
@@ -142,7 +142,7 @@ const [statusOpen, setStatusOpen] = useState(false);
           assetName,
           assetNumber,
           serialNumber,
-          department,
+          section,
           status,
           epcs: epcList,
         },
@@ -160,7 +160,7 @@ const [statusOpen, setStatusOpen] = useState(false);
       setAssetName('');
       setAssetNumber('');
       setSerialNumber('');
-      setDepartment('');
+      setSection('');
       setStatus('Healthy');
 
     } catch (error) {
@@ -430,12 +430,12 @@ const [statusOpen, setStatusOpen] = useState(false);
           {/* ROW */}
           <View style={styles.formRow}>
             <Text style={styles.label}>
-              Department
+              Section
             </Text>
 
             <TextInput
-              value={department}
-              onChangeText={setDepartment}
+              value={section}
+              onChangeText={setSection}
               style={styles.input}
               placeholder="ICT / Finance / HR"
               placeholderTextColor="#94a3b8"

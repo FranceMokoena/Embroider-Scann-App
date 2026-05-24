@@ -51,7 +51,7 @@ type CreateAssetPayload = {
   assetNumber: string;
   epc: string;
   serialNumber?: string;
-  department?: string;
+  section?: string;
   status?: string;
 };
 
@@ -76,8 +76,7 @@ export default function AddAsset({ navigation }: any) {
   const [assetNumber, setAssetNumber] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
   const [epcValue, setEpcValue] = useState('');
-  const [category, setCategory] = useState('');
-  const [department, setDepartment] = useState('');
+  const [section, setSection] = useState('');
   const [status, setStatus] = useState('');
   const [statusModalVisible, setStatusModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -175,7 +174,7 @@ export default function AddAsset({ navigation }: any) {
       assetNumber: trimmedAssetNumber,
       serialNumber: optionalString(serialNumber),
       epc: normalizedEpc,
-      department: optionalString(department),
+      section: optionalString(section),
       status: optionalString(status),
     };
   };
@@ -186,7 +185,7 @@ export default function AddAsset({ navigation }: any) {
     setSerialNumber('');
     setEpcValue('');
     
-    setDepartment('');
+    setSection('');
     setStatus('');
     setIsEpcCaptureActive(false);
   };
@@ -325,10 +324,10 @@ export default function AddAsset({ navigation }: any) {
           </View>
 
           <RfidFormField
-            label="Department"
-            value={department}
-            onChangeText={setDepartment}
-            placeholder="Choose department"
+            label="Section"
+            value={section}
+            onChangeText={setSection}
+            placeholder="Enter section"
           />
 
           <RfidSelectField

@@ -31,6 +31,7 @@ type AssetRecord = {
   assetNumber?: string | null;
   epc?: string | null;
   epcKey?: string | null;
+  section?: string | null;
   department?: string | null;
   category?: string | null;
   status?: string | null;
@@ -41,13 +42,13 @@ type AssetRecord = {
   verificationStatus?: string | null;
 };
 
-type FilterMode = 'assetName' | 'assetNumber' | 'epc' | 'department' | 'status' | 'serialNumber';
+type FilterMode = 'assetName' | 'assetNumber' | 'epc' | 'section' | 'status' | 'serialNumber';
 
 const filterOptions: Array<{ label: string; value: FilterMode }> = [
   { label: 'Asset Name', value: 'assetName' },
   { label: 'Asset Number', value: 'assetNumber' },
   { label: 'EPC', value: 'epc' },
-  { label: 'Department', value: 'department' },
+  { label: 'Section', value: 'section' },
   { label: 'Status', value: 'status' },
   { label: 'Serial Number', value: 'serialNumber' },
 ];
@@ -71,8 +72,11 @@ const getAssetName = (asset: AssetRecord) =>
 const getAssetEpc = (asset: AssetRecord) =>
   asset.epc || asset.epcKey || dash;
 
+const getAssetSection = (asset: AssetRecord) =>
+  asset.section || asset.department || asset.category || asset.location || dash;
+
 const getCurrentLocation = (asset: AssetRecord) =>
-  asset.location || asset.department || dash;
+  getAssetSection(asset);
 
 const getVerificationStatus = (asset: AssetRecord) =>
   asset.verificationStatus || dash;
@@ -84,7 +88,7 @@ const getFilterValue = (asset: AssetRecord, mode: FilterMode) => {
   if (mode === 'assetName') return getAssetName(asset);
   if (mode === 'assetNumber') return asset.assetNumber || '';
   if (mode === 'epc') return getAssetEpc(asset);
-  if (mode === 'department') return asset.department || asset.category || '';
+  if (mode === 'section') return getAssetSection(asset);
   if (mode === 'status') return asset.status || '';
   return asset.serialNumber || '';
 };
@@ -146,7 +150,7 @@ export default function AllAssetsScreen({ navigation }: any) {
   const assetDepartments = useMemo(() => {
     const set = new Set<string>();
     assets.forEach(asset => {
-      const d = (asset.department || asset.category || asset.location || '').trim();
+      const d = getAssetSection(asset).trim();
       if (d) {
         set.add(d);
       }
@@ -241,16 +245,16 @@ export default function AllAssetsScreen({ navigation }: any) {
     const targetDept = assignTargetDepartment.trim();
     if (!targetDept) {
       Alert.alert(
-        'Department required',
-        'Choose an existing department / section from the dropdown list.',
+        'Section required',
+        'Choose an existing section from the dropdown list.',
       );
       return;
     }
 
     if (!availableDepartments.includes(targetDept)) {
       Alert.alert(
-        'Invalid department',
-        'Select a department that already exists in the system.',
+        'Invalid section',
+        'Select a section that already exists in the system.',
       );
       return;
     }
@@ -285,7 +289,7 @@ export default function AllAssetsScreen({ navigation }: any) {
                 continue;
               }
               try {
-                await patchAssetById(id, { department: targetDept });
+                await patchAssetById(id, { section: targetDept });
                 ok += 1;
               } catch (e) {
                 errors.push(
@@ -386,7 +390,7 @@ export default function AllAssetsScreen({ navigation }: any) {
       <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{getAssetName(item)}</Text>
       <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{item.assetNumber || dash}</Text>
       <Text style={styles.cell} numberOfLines={1} ellipsizeMode="middle">{getAssetEpc(item)}</Text>
-      <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{item.department || item.category || dash}</Text>
+      <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{getAssetSection(item)}</Text>
       <View style={styles.statusCell}>{renderStatusBadge(item.status)}</View>
       <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{item.serialNumber || dash}</Text>
       <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{formatDate(item.createdAt)}</Text>
@@ -578,7 +582,7 @@ export default function AllAssetsScreen({ navigation }: any) {
                 <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Serial Number</Text>
                 <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Created Date</Text>
                 <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Updated Date</Text>
-                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Current Location</Text>
+                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Current Section</Text>
                 <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Verification Status</Text>
               </View>
 
@@ -640,10 +644,10 @@ export default function AllAssetsScreen({ navigation }: any) {
                 {[
                   ['Asset Number', selectedAsset.assetNumber || dash],
                   ['EPC', getAssetEpc(selectedAsset)],
-                  ['Department', selectedAsset.department || selectedAsset.category || dash],
+                  ['Section', getAssetSection(selectedAsset)],
                   ['Status', selectedAsset.status || dash],
                   ['Serial Number', selectedAsset.serialNumber || dash],
-                  ['Current Location', getCurrentLocation(selectedAsset)],
+                  ['Current Section', getCurrentLocation(selectedAsset)],
                   ['Verification Status', getVerificationStatus(selectedAsset)],
                 ].map(([label, value]) => (
                   <View key={label} style={styles.detailRow}>

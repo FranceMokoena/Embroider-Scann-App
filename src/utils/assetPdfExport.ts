@@ -167,7 +167,7 @@ const buildAssetRows = (assets: AssetRecord[]) =>
           <td>${escapeHtml(getAssetDisplayName(asset))}</td>
           <td>${escapeHtml(asset.assetNumber)}</td>
           <td>${escapeHtml(asset.epc || asset.epcKey)}</td>
-          <td>${escapeHtml(asset.department || asset.category)}</td>
+          <td>${escapeHtml(asset.section || asset.department || asset.category || asset.location)}</td>
           <td>${escapeHtml(asset.status)}</td>
           <td>${escapeHtml(asset.serialNumber)}</td>
           <td>${escapeHtml(asset.assignmentInformation?.assignedBy ? String(asset.assignmentInformation.assignedBy) : '-')}</td>

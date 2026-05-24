@@ -5,6 +5,7 @@ const {
   createBulkAssets,
   createAsset,
   deleteAsset,
+  getAssetById,
   getSectionOptions,
   getAssetSummary,
   getAssignmentLifecycle,

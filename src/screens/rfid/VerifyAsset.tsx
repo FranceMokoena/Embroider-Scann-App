@@ -32,7 +32,7 @@ export default function VerifyAsset({ navigation }: any) {
     [],
   );
 
-  const [location, setLocation] = useState('');
+  const [section, setSection] = useState('');
   const [departments, setDepartments] = useState<string[]>([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
   const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
@@ -198,10 +198,13 @@ export default function VerifyAsset({ navigation }: any) {
   };
 
   const handleSelectDepartment = (department: string) => {
-    setLocation(department);
+    setSection(department);
     setDepartmentSearch('');
     setDepartmentDropdownOpen(false);
   };
+
+  const getAssetSection = (asset: any) =>
+    String(asset?.section || asset?.department || asset?.category || asset?.location || '').trim();
 
   const buildAuditRows = (
     expectedAssets: any[],
@@ -231,11 +234,10 @@ export default function VerifyAsset({ navigation }: any) {
         verificationStatus: 'Pending',
       }));
 
-    // FIXED: Compare against department (current assigned section), not location
     const unexpectedAssets = uniqueEpcs
       .filter(epc => {
         const asset = scannedByEpc.get(epc);
-        return asset && asset.department !== selectedLocation;
+        return asset && !expectedByEpc.has(epc) && getAssetSection(asset) !== selectedLocation;
       })
       .map(epc => ({
         ...scannedByEpc.get(epc),
@@ -250,10 +252,9 @@ export default function VerifyAsset({ navigation }: any) {
         assetName: 'Unregistered Tag',
         assetNumber: '—',
         epc,
-        department: '—',
+        section: '—',
         status: 'Unregistered',
         serialNumber: '—',
-        location: selectedLocation,
         auditResult: 'Unregistered',
         verificationStatus: 'Pending',
       }));
@@ -262,12 +263,12 @@ export default function VerifyAsset({ navigation }: any) {
   };
 
   const handleStartAudit = async () => {
-    const normalizedLocation = location.trim();
+    const normalizedSection = section.trim();
     const uniqueEpcs = Array.from(
       new Set([normalizeEpc(epcValue), ...scannedEpcs].filter(Boolean)),
     );
 
-    if (!normalizedLocation) {
+    if (!normalizedSection) {
       Alert.alert(
         'Section Required',
         'Select a section before starting audit.',
@@ -286,7 +287,7 @@ export default function VerifyAsset({ navigation }: any) {
       setAuditAssets([]);
 
       const assetsResponse = await apiRequest<{ assets: any[] }>(
-        `/api/assets?section=${encodeURIComponent(normalizedLocation)}`,
+        `/api/assets?section=${encodeURIComponent(normalizedSection)}`,
         { method: 'GET' },
       );
 
@@ -305,19 +306,20 @@ export default function VerifyAsset({ navigation }: any) {
         }),
       );
 
-      const rows = buildAuditRows(assetsResponse.assets, lookupResults, normalizedLocation);
+      const expectedAssets = assetsResponse.assets || [];
+      const rows = buildAuditRows(expectedAssets, lookupResults, normalizedSection);
       setAuditAssets(rows);
       setAuditResult({
-        expectedCount: assetsResponse.assets.length,
+        expectedCount: expectedAssets.length,
         scannedCount: uniqueEpcs.length,
         uniqueScannedCount: uniqueEpcs.length,
         matchedAssets: rows.filter(row => row.auditResult === 'Matched'),
         missingAssets: rows.filter(row => row.auditResult === 'Missing'),
         unexpectedAssets: rows.filter(row => row.auditResult === 'Unexpected'),
         unregisteredTags: rows.filter(row => row.auditResult === 'Unregistered'),
-        verificationPercentage: assetsResponse.assets.length === 0
+        verificationPercentage: expectedAssets.length === 0
           ? 0
-          : Math.round((rows.filter(row => row.auditResult === 'Matched').length / assetsResponse.assets.length) * 100),
+          : Math.round((rows.filter(row => row.auditResult === 'Matched').length / expectedAssets.length) * 100),
       });
     } catch (error) {
       Alert.alert(
@@ -358,12 +360,12 @@ export default function VerifyAsset({ navigation }: any) {
   };
 
   const handleVerifyRoom = async () => {
-    const normalizedLocation = location.trim();
+    const normalizedSection = section.trim();
     const uniqueEpcs = Array.from(
       new Set([normalizeEpc(epcValue), ...scannedEpcs].filter(Boolean)),
     );
 
-    if (!normalizedLocation) {
+    if (!normalizedSection) {
       openVerificationModal(
         'failure',
         'Select a section before verification.',
@@ -384,7 +386,8 @@ export default function VerifyAsset({ navigation }: any) {
       const result = await apiRequest<{ audit: any }>('/api/rfid/verify-room', {
         method: 'POST',
         body: {
-          section: normalizedLocation,
+          section: normalizedSection,
+          location: normalizedSection,
           epcs: uniqueEpcs,
         },
       });
@@ -510,7 +513,7 @@ export default function VerifyAsset({ navigation }: any) {
               numberOfLines={1}
               style={styles.dropdownButtonText}
             >
-              {location || 'Select a section'}
+              {section || 'Select a section'}
             </Text>
 
             <Ionicons
@@ -725,7 +728,7 @@ export default function VerifyAsset({ navigation }: any) {
                       <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Asset Name</Text>
                       <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Asset Number</Text>
                       <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>EPC</Text>
-                      <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Department</Text>
+                      <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Section</Text>
                       <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Status</Text>
                       <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Serial Number</Text>
                       <Text numberOfLines={1} style={[styles.tableCell, styles.tableHeaderCell]}>Created Date</Text>
@@ -739,7 +742,7 @@ export default function VerifyAsset({ navigation }: any) {
                         <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.assetName || '—'}</Text>
                         <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.assetNumber || '—'}</Text>
                         <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.epc || '—'}</Text>
-                        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.department || asset.location || '—'}</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{getAssetSection(asset) || '—'}</Text>
                         <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.status || '—'}</Text>
                         <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>{asset.serialNumber || '—'}</Text>
                         <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tableCell}>
@@ -791,8 +794,8 @@ export default function VerifyAsset({ navigation }: any) {
                   </Text>
                 </View>
                 <View style={styles.modalStatItem}>
-                  <Text style={styles.modalStatLabel}>Department</Text>
-                  <Text style={styles.modalStatValue}>{location || 'N/A'}</Text>
+                  <Text style={styles.modalStatLabel}>Section</Text>
+                  <Text style={styles.modalStatValue}>{section || 'N/A'}</Text>
                 </View>
                 <View style={styles.modalStatItem}>
                   <Text style={styles.modalStatLabel}>Timestamp</Text>

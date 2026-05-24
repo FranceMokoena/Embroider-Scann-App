@@ -101,7 +101,7 @@ export default function RepairableAssetsScreen({ navigation }: any) {
                 <Text style={[styles.cell, styles.headerCell]}>Asset Name</Text>
                 <Text style={[styles.cell, styles.headerCell]}>Asset Number</Text>
                 <Text style={[styles.cell, styles.headerCell]}>EPC</Text>
-                <Text style={[styles.cell, styles.headerCell]}>Department</Text>
+                <Text style={[styles.cell, styles.headerCell]}>Section</Text>
                 <Text style={[styles.cell, styles.headerCell]}>Status</Text>
                 <Text style={[styles.cell, styles.headerCell]}>Serial Number</Text>
                 <Text style={[styles.cell, styles.headerCell]}>Created Date</Text>
@@ -116,7 +116,7 @@ export default function RepairableAssetsScreen({ navigation }: any) {
                   <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>{asset.assetName || asset.name || '—'}</Text>
                   <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>{asset.assetNumber || '—'}</Text>
                   <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>{asset.epc || asset.epcKey || '—'}</Text>
-                  <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>{asset.department || '—'}</Text>
+                  <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>{asset.section || asset.department || asset.category || asset.location || '—'}</Text>
                   <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cell, styles.statusText]}>{asset.status || '—'}</Text>
                   <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>{asset.serialNumber || '—'}</Text>
                   <Text numberOfLines={1} ellipsizeMode="tail" style={styles.cell}>{asset.createdAt ? new Date(asset.createdAt).toLocaleDateString() : '—'}</Text>

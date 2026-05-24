@@ -35,6 +35,12 @@ const assetSchema = new mongoose.Schema({
     set: normalizeEpc,
     match: [EPC_REGEX, 'EPC must be 12-24 alphanumeric characters'],
   },
+  section: {
+    type: String,
+    set: trimString,
+    default: undefined,
+  },
+  // Legacy fields retained only so existing MongoDB documents can be migrated/read safely.
   category: {
     type: String,
     set: trimString,
@@ -85,7 +91,7 @@ const assetSchema = new mongoose.Schema({
     source: { type: String, set: trimString },
   }],
   verificationHistory: [{
-    location: { type: String, set: trimString },
+    section: { type: String, set: trimString },
     result: { type: String, set: trimString },
     auditId: { type: String, set: trimString },
     verifiedAt: { type: Date, default: () => new Date() },

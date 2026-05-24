@@ -190,7 +190,7 @@ export default function BeyondRepairAssetsScreen({ navigation }: any) {
                     styles.headerCell,
                   ]}
                 >
-                  Department
+                  Section
                 </Text>
 
                 <Text
@@ -264,7 +264,7 @@ export default function BeyondRepairAssetsScreen({ navigation }: any) {
                     ellipsizeMode="tail"
                     style={styles.cell}
                   >
-                    {asset.department || '—'}
+                    {asset.section || asset.department || asset.category || asset.location || '—'}
                   </Text>
 
                   <Text

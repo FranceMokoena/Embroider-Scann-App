@@ -23,6 +23,25 @@ const normalizeOptionalString = value => {
 
 const normalizeEpc = value => trimString(value).toUpperCase();
 
+const getAssetSection = asset =>
+  trimString(asset?.section)
+  || trimString(asset?.category)
+  || trimString(asset?.department)
+  || trimString(asset?.location);
+
+const buildSectionFilter = section => {
+  const normalizedSection = trimString(section);
+  return {
+    $or: [
+      { section: normalizedSection },
+      { section: { $exists: false }, category: normalizedSection },
+      { section: { $in: [null, ''] }, category: normalizedSection },
+      { section: { $exists: false }, category: { $exists: false }, location: normalizedSection },
+      { section: { $in: [null, ''] }, category: { $in: [null, ''] }, location: normalizedSection },
+    ],
+  };
+};
+
 const getAssignedByDisplayName = assignedBy => {
   if (!assignedBy) {
     return null;
@@ -45,11 +64,8 @@ const mapAssetResponse = asset => ({
   assetNumber: asset.assetNumber,
   serialNumber: asset.serialNumber || null,
   epc: asset.epc,
-  category: asset.category || null,
-  department: asset.category || null,
-  section: asset.category || null,
+  section: getAssetSection(asset) || null,
   status: asset.status || null,
-  location: asset.location || null,
   assignedTo: asset.assignedTo || null,
   assignmentInformation: asset.assignmentInformation ? {
     ...asset.assignmentInformation,
@@ -105,11 +121,11 @@ const validateCreateAssetInput = payload => {
     assetNumber,
     serialNumber: normalizeOptionalString(payload.serialNumber),
     epc,
-    category: normalizeOptionalString(payload.category)
-      || normalizeOptionalString(payload.section)
-      || normalizeOptionalString(payload.department),
+    section: normalizeOptionalString(payload.section)
+      || normalizeOptionalString(payload.department)
+      || normalizeOptionalString(payload.category)
+      || normalizeOptionalString(payload.location),
     status,
-    location: normalizeOptionalString(payload.location),
     assignedTo: normalizeOptionalString(payload.assignedTo),
     assignmentInformation: payload.userId
       ? {
@@ -233,12 +249,11 @@ const buildAssetFilter = filters => {
     query.status = filters.status;
   }
 
-  if (filters.location) {
-    query.location = trimString(filters.location);
-  }
-
-  if (filters.department || filters.section) {
-    query.category = trimString(filters.section || filters.department);
+  if (filters.section || filters.department || filters.category || filters.location) {
+    Object.assign(
+      query,
+      buildSectionFilter(filters.section || filters.department || filters.category || filters.location),
+    );
   }
 
   if (filters.q) {
@@ -285,14 +300,9 @@ const updateAsset = async (assetId, payload = {}) => {
       throw createServiceError('section must already exist in the system', 400);
     }
 
-    updates.category = dept;
-  }
-
-  if (payload.location !== undefined) {
-    const loc = normalizeOptionalString(payload.location);
-    if (loc) {
-      updates.location = loc;
-    }
+    updates.section = dept;
+    updates.category = undefined;
+    updates.location = undefined;
   }
 
   if (payload.status !== undefined) {
@@ -309,8 +319,8 @@ const updateAsset = async (assetId, payload = {}) => {
     throw createServiceError('No valid fields to update', 400);
   }
 
-  const previousDepartment = trimString(asset.category);
-  const nextDepartment = trimString(updates.category);
+  const previousDepartment = getAssetSection(asset);
+  const nextDepartment = trimString(updates.section);
   if (nextDepartment && nextDepartment !== previousDepartment) {
     asset.assignmentLifecycleHistory = asset.assignmentLifecycleHistory || [];
     asset.assignmentLifecycleHistory.push({
@@ -397,12 +407,14 @@ const getAssetSummary = async () => {
 };
 
 const getAvailableSections = async () => {
-  const [assetSections, userDepartments] = await Promise.all([
+  const [assetSections, legacyCategories, legacyLocations, userDepartments] = await Promise.all([
+    Asset.distinct('section', { section: { $exists: true, $nin: [null, ''] } }),
     Asset.distinct('category', { category: { $exists: true, $nin: [null, ''] } }),
+    Asset.distinct('location', { location: { $exists: true, $nin: [null, ''] } }),
     User.distinct('department', { department: { $exists: true, $nin: [null, ''] } }),
   ]);
 
-  return Array.from(new Set([...assetSections, ...userDepartments]
+  return Array.from(new Set([...assetSections, ...legacyCategories, ...legacyLocations, ...userDepartments]
     .map(trimString)
     .filter(Boolean)))
     .sort((left, right) => left.localeCompare(right));
@@ -422,8 +434,8 @@ const getAssignmentLifecycle = async () => {
         assetId: String(asset._id),
         assetName: asset.assetName,
         assetNumber: asset.assetNumber,
-        initialSection: asset.category || 'Unknown',
-        currentSection: asset.category || asset.location || 'Unknown',
+        initialSection: getAssetSection(asset) || 'Unknown',
+        currentSection: getAssetSection(asset) || 'Unknown',
         assignedBy: asset.assignmentInformation?.assignedBy ? 'System' : 'Unknown',
         assignmentDate: asset.assignmentInformation?.assignedAt || asset.createdAt,
         lastUpdated: asset.updatedAt,
@@ -436,7 +448,7 @@ const getAssignmentLifecycle = async () => {
       assetName: asset.assetName,
       assetNumber: asset.assetNumber,
       initialSection: entry.fromSection || 'Unassigned',
-      currentSection: entry.toSection || asset.category || 'Unknown',
+      currentSection: entry.toSection || getAssetSection(asset) || 'Unknown',
       assignedBy: entry.assignedBy ? 'System' : 'Unknown',
       assignmentDate: entry.assignedAt || asset.updatedAt,
       lastUpdated: asset.updatedAt,
@@ -450,10 +462,10 @@ const getAssignmentLifecycle = async () => {
   );
 };
 
-const verifyRoomInventory = async ({ location, section, epcs, userId }) => {
-  const normalizedLocation = normalizeOptionalString(location || section);
-  if (!normalizedLocation) {
-    throw createServiceError('location or section is required', 400);
+const verifyRoomInventory = async ({ section, location, epcs, userId }) => {
+  const normalizedSection = normalizeOptionalString(section || location);
+  if (!normalizedSection) {
+    throw createServiceError('section is required', 400);
   }
 
   const scannedEpcs = Array.isArray(epcs)
@@ -467,9 +479,8 @@ const verifyRoomInventory = async ({ location, section, epcs, userId }) => {
   const uniqueScannedEpcs = Array.from(new Set(scannedEpcs));
   const duplicateReads = scannedEpcs.length - uniqueScannedEpcs.length;
   
-  // FIXED: Query by category (assigned section), not location
   const [expectedAssets, scannedAssets] = await Promise.all([
-    Asset.find({ category: normalizedLocation }).sort({ assetName: 1 }),
+    Asset.find(buildSectionFilter(normalizedSection)).sort({ assetName: 1 }),
     Asset.find({ epc: { $in: uniqueScannedEpcs } }),
   ]);
 
@@ -484,11 +495,10 @@ const verifyRoomInventory = async ({ location, section, epcs, userId }) => {
     .filter(asset => !uniqueScannedEpcs.includes(asset.epc))
     .map(mapAssetResponse);
 
-  // FIXED: Compare against category (current assigned section), not location
   const unexpectedAssets = uniqueScannedEpcs
     .filter(epc => {
       const asset = scannedByEpc.get(epc);
-      return asset && asset.category !== normalizedLocation;
+      return asset && getAssetSection(asset) !== normalizedSection;
     })
     .map(epc => mapAssetResponse(scannedByEpc.get(epc)));
 
@@ -513,7 +523,7 @@ const verifyRoomInventory = async ({ location, section, epcs, userId }) => {
             $concatArrays: [
               { $ifNull: ['$verificationHistory', []] },
               [{
-                location: normalizedLocation,
+                section: normalizedSection,
                 auditId,
                 result: {
                   $cond: [
@@ -547,7 +557,7 @@ const verifyRoomInventory = async ({ location, section, epcs, userId }) => {
 
   return {
     auditId,
-    location: normalizedLocation,
+    section: normalizedSection,
     auditTimestamp: new Date(),
     expectedCount: expectedAssets.length,
     scannedCount: scannedEpcs.length,

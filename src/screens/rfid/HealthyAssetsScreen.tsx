@@ -182,7 +182,7 @@ export default function HealthyAssetsScreen({ navigation }: any) {
                   numberOfLines={1}
                   style={[styles.cell, styles.headerCell]}
                 >
-                  Department
+                  Section
                 </Text>
 
                 <Text
@@ -247,7 +247,7 @@ export default function HealthyAssetsScreen({ navigation }: any) {
                     ellipsizeMode="tail"
                     style={styles.cell}
                   >
-                    {asset.department || '—'}
+                    {asset.section || asset.department || asset.category || asset.location || '—'}
                   </Text>
 
                   <Text

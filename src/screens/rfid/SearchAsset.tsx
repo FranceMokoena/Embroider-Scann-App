@@ -24,7 +24,9 @@ type AssetResult = {
   assetNumber: string;
   serialNumber?: string | null;
   epc: string;
+  section?: string | null;
   department?: string | null;
+  category?: string | null;
   status?: string | null;
   location?: string | null;
 };
@@ -318,7 +320,7 @@ export default function SearchAsset({ navigation, route }: any) {
                 <Text style={[styles.tableHeaderCell, styles.firstColumn]}>Asset Name</Text>
                 <Text style={styles.tableHeaderCell}>Asset Number</Text>
                 <Text style={styles.tableHeaderCell}>EPC</Text>
-                <Text style={styles.tableHeaderCell}>Department</Text>
+                <Text style={styles.tableHeaderCell}>Section</Text>
                 <Text style={styles.tableHeaderCell}>Status</Text>
               </View>
               {assets.map(asset => (
@@ -326,7 +328,7 @@ export default function SearchAsset({ navigation, route }: any) {
                   <Text style={[styles.tableCell, styles.firstColumn]}>{asset.assetName}</Text>
                   <Text style={styles.tableCell}>{asset.assetNumber}</Text>
                   <Text style={styles.tableCell}>{asset.epc}</Text>
-                  <Text style={styles.tableCell}>{asset.department || 'N/A'}</Text>
+                  <Text style={styles.tableCell}>{asset.section || asset.department || asset.category || asset.location || 'N/A'}</Text>
                   <Text style={styles.tableCell}>{asset.status || 'Unknown'}</Text>
                 </View>
               ))}

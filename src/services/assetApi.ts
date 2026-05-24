@@ -9,9 +9,9 @@ export type AssetRecord = {
   assetNumber?: string | null;
   epc?: string | null;
   epcKey?: string | null;
+  section?: string | null;
   department?: string | null;
   category?: string | null;
-  section?: string | null;
   status?: string | null;
   serialNumber?: string | null;
   location?: string | null;
@@ -57,10 +57,8 @@ export const deleteAssetById = async (assetId: string) => {
 };
 
 export type PatchAssetPayload = {
-  department?: string;
-  location?: string;
-  status?: string;
   section?: string;
+  status?: string;
 };
 
 export const patchAssetById = async (assetId: string, body: PatchAssetPayload) => {
@@ -101,8 +99,8 @@ const normalizeSectionOptions = (values: unknown) => {
 
 export const fetchSectionOptions = async () => {
   const optionEndpoints = [
-    '/api/assets/departments/options',
     '/api/assets/sections/options',
+    '/api/assets/departments/options',
   ];
 
   for (const endpoint of optionEndpoints) {
@@ -123,7 +121,7 @@ export const fetchSectionOptions = async () => {
 
   const result = await apiRequest<{ assets?: AssetRecord[] }>('/api/assets', { method: 'GET' });
   return normalizeSectionOptions(
-    (result.assets || []).map(asset => asset.department || asset.category || asset.section || asset.location),
+    (result.assets || []).map(asset => asset.section || asset.department || asset.category || asset.location),
   );
 };
 

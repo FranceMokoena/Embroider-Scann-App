@@ -23,13 +23,12 @@ import { PRIMARY_BLUE } from '../../theme/erpTheme';
 import {
   deleteAssetById,
   fetchAssetById,
-  fetchDepartmentOptions,
   patchAssetById,
 } from '../../services/assetApi';
 import { exportAssetsToPdf } from '../../utils/assetPdfExport';
 import { subscribeToAssetSync } from '../../services/assetSync';
 
-type SearchMode = 'epc' | 'assetNumber' | 'serialNumber' | 'assetName' | 'department';
+type SearchMode = 'epc' | 'assetNumber' | 'serialNumber' | 'assetName' | 'section';
 type SearchStatus = 'Idle' | 'Searching' | 'Listening' | 'Found';
 
 type AssetRecord = {
@@ -41,7 +40,9 @@ type AssetRecord = {
   serialNumber?: string | null;
   epc?: string | null;
   epcKey?: string | null;
+  section?: string | null;
   department?: string | null;
+  category?: string | null;
   location?: string | null;
   status?: string | null;
   createdAt?: string | null;
@@ -62,7 +63,7 @@ const searchOptions: Array<{ label: string; value: SearchMode }> = [
   { label: 'Asset Number', value: 'assetNumber' },
   { label: 'Serial Number', value: 'serialNumber' },
   { label: 'Asset Name', value: 'assetName' },
-  { label: 'Department', value: 'department' },
+  { label: 'Section', value: 'section' },
 ];
 
 const getAssetId = (asset: AssetRecord) =>
@@ -74,8 +75,11 @@ const getAssetName = (asset: AssetRecord) =>
 const getAssetEpc = (asset: AssetRecord) =>
   asset.epc || asset.epcKey || '';
 
+const getAssetSection = (asset: AssetRecord) =>
+  asset.section || asset.department || asset.category || asset.location || 'N/A';
+
 const getCurrentLocation = (asset: AssetRecord) =>
-  asset.location || asset.department || 'N/A';
+  getAssetSection(asset);
 
 const getVerificationStatus = (asset: AssetRecord) =>
   asset.verificationStatus || 'N/A';
@@ -88,7 +92,7 @@ const getFieldValue = (asset: AssetRecord, mode: SearchMode) => {
   if (mode === 'assetNumber') return asset.assetNumber || '';
   if (mode === 'serialNumber') return asset.serialNumber || '';
   if (mode === 'assetName') return getAssetName(asset);
-  return asset.department || '';
+  return getAssetSection(asset);
 };
 
 const assetMatchesMode = (asset: AssetRecord, mode: SearchMode, query: string) => {
@@ -230,7 +234,7 @@ export default function SearchAssetScreen({ navigation }: any) {
 
     try {
       setActionLoading(true);
-      await patchAssetById(getAssetId(activeAsset), { department: sectionValue.trim() });
+      await patchAssetById(getAssetId(activeAsset), { section: sectionValue.trim() });
       Alert.alert('Assignment saved', `${getAssetName(activeAsset)} assigned to ${sectionValue.trim()}.`);
       setSectionDialogVisible(false);
       setSectionValue('');
@@ -716,11 +720,11 @@ export default function SearchAssetScreen({ navigation }: any) {
                   <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Asset Name</Text>
                   <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Asset Number</Text>
                   <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>EPC</Text>
-                  <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Department</Text>
+                  <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Section</Text>
                   <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Status</Text>
                   <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Serial Number</Text>
                   <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Created Date</Text>
-                  <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Current Location</Text>
+                  <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Current Section</Text>
                   <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Verification Status</Text>
                 </View>
 
@@ -737,7 +741,7 @@ export default function SearchAssetScreen({ navigation }: any) {
                       <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{getAssetName(asset)}</Text>
                       <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{asset.assetNumber || 'N/A'}</Text>
                       <Text style={styles.cell} numberOfLines={1} ellipsizeMode="middle">{getAssetEpc(asset) || 'N/A'}</Text>
-                      <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{asset.department || 'N/A'}</Text>
+                      <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{getAssetSection(asset)}</Text>
                       <Text style={[styles.cell, styles.statusCell]} numberOfLines={1} ellipsizeMode="tail">{asset.status || 'N/A'}</Text>
                       <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{asset.serialNumber || 'N/A'}</Text>
                       <Text style={styles.cell} numberOfLines={1} ellipsizeMode="tail">{getCreatedDate(asset)}</Text>
@@ -834,7 +838,7 @@ export default function SearchAssetScreen({ navigation }: any) {
                 <View style={styles.modalContent}>
                   <Text style={styles.modalTitle}>Assign to Section</Text>
                   <Text style={styles.modalSubtitle}>
-                    Enter the section or department name where this asset should be stored.
+                    Enter the section name where this asset should be stored.
                   </Text>
                   <TextInput
                     style={styles.sectionInput}

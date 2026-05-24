@@ -22,7 +22,7 @@ import { useRFIDStreamController } from '../../rfid/RFIDStreamController';
 import { ERP_FORM } from '../../theme/erpFormStyles';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
 
-type LocateMode = 'epc' | 'assetNumber' | 'serialNumber' | 'assetName' | 'department';
+type LocateMode = 'epc' | 'assetNumber' | 'serialNumber' | 'assetName' | 'section';
 
 type AssetRecord = {
   id?: string;
@@ -33,7 +33,9 @@ type AssetRecord = {
   serialNumber?: string | null;
   epc?: string | null;
   epcKey?: string | null;
+  section?: string | null;
   department?: string | null;
+  category?: string | null;
   location?: string | null;
   status?: string | null;
   createdAt?: string | null;
@@ -54,7 +56,7 @@ const locateOptions: Array<{ label: string; value: LocateMode }> = [
   { label: 'Asset Number', value: 'assetNumber' },
   { label: 'Serial Number', value: 'serialNumber' },
   { label: 'Asset Name', value: 'assetName' },
-  { label: 'Department', value: 'department' },
+  { label: 'Section', value: 'section' },
 ];
 
 const getAssetId = (asset: AssetRecord) =>
@@ -67,14 +69,14 @@ const getAssetEpc = (asset: AssetRecord) =>
   asset.epc || asset.epcKey || '';
 
 const getAssetLocation = (asset: AssetRecord | null) =>
-  asset?.location || asset?.department || 'Location metadata unavailable';
+  asset?.section || asset?.department || asset?.category || asset?.location || 'Section metadata unavailable';
 
 const getFieldValue = (asset: AssetRecord, mode: LocateMode) => {
   if (mode === 'epc') return getAssetEpc(asset);
   if (mode === 'assetNumber') return asset.assetNumber || '';
   if (mode === 'serialNumber') return asset.serialNumber || '';
   if (mode === 'assetName') return getAssetName(asset);
-  return asset.department || asset.location || '';
+  return asset.section || asset.department || asset.category || asset.location || '';
 };
 
 const assetMatchesMode = (asset: AssetRecord, mode: LocateMode, query: string) => {
@@ -562,9 +564,9 @@ export default function LocateAssetScreen({ navigation }: any) {
                 </Text>
               </View>
               <View style={styles.metadataItem}>
-                <Text style={styles.metadataLabel}>Department</Text>
+                <Text style={styles.metadataLabel}>Section</Text>
                 <Text style={styles.metadataValue} numberOfLines={1}>
-                  {locatedAsset.department || 'N/A'}
+                  {getAssetLocation(locatedAsset)}
                 </Text>
               </View>
               <View style={styles.metadataItem}>
@@ -581,7 +583,7 @@ export default function LocateAssetScreen({ navigation }: any) {
           <View style={styles.mapHeader}>
             <View>
               <Text style={styles.eyebrow}>Campus Map</Text>
-              <Text style={styles.mapTitle}>Department Locator View</Text>
+              <Text style={styles.mapTitle}>Section Locator View</Text>
             </View>
             <View style={styles.locationPill}>
               <Ionicons name="location-outline" size={14} color="#166534" />
