@@ -49,6 +49,23 @@ const createBulkAssets = async (req, res) => {
   }
 };
 
+const createSection = async (req, res) => {
+  try {
+    const section = await assetService.createSection({
+      ...req.body,
+      userId: req.userId,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Section created successfully',
+      data: section,
+    });
+  } catch (error) {
+    return sendAssetError(res, error, 'Failed to create section');
+  }
+};
+
 const listAssets = async (req, res) => {
   try {
     const assets = await assetService.getAllAssets(req.query);
@@ -145,12 +162,27 @@ const getSectionOptions = async (_req, res) => {
   }
 };
 
+const getSectionsSummary = async (_req, res) => {
+  try {
+    const summary = await assetService.getSectionSummary();
+
+    return res.status(200).json({
+      success: true,
+      summary,
+    });
+  } catch (error) {
+    return sendAssetError(res, error, 'Failed to load section summary');
+  }
+};
+
 module.exports = {
   createBulkAssets,
   createAsset,
+  createSection,
   deleteAsset,
   getAssetById,
   getSectionOptions,
+  getSectionsSummary,
   getAssetSummary,
   getAssignmentLifecycle,
   listAssets,

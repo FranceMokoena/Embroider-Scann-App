@@ -457,6 +457,10 @@ export default function RFIDHomeScreen({ navigation }: any) {
       return navigation.navigate('AllAssetsScreen');
     }
 
+    if (label === 'Sections') {
+      return navigation.navigate('SectionsScreen');
+    }
+
     if (label === 'My Profile') {
       setIsProfileVisible(true);
       return;

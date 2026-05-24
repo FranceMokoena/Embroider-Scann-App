@@ -18,6 +18,8 @@ import RFIDHomeScreen from '../rfid/RFIDHomeScreen';
 import HealthyAssetsScreen from '../rfid/HealthyAssetsScreen';
 import RepairableAssetsScreen from '../rfid/RepairableAssetsScreen';
 import BeyondRepairAssetsScreen from '../rfid/BeyondRepairAssetsScreen';
+import SectionsScreen from '../rfid/SectionsScreen';
+import SectionDetailScreen from '../rfid/SectionDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -43,6 +45,8 @@ export default function AuthNavigator() {
       <Stack.Screen name="HealthyAssetsScreen" component={HealthyAssetsScreen} />
       <Stack.Screen name="RepairableAssetsScreen" component={RepairableAssetsScreen} />
       <Stack.Screen name="BeyondRepairAssetsScreen" component={BeyondRepairAssetsScreen} />
+      <Stack.Screen name="SectionsScreen" component={SectionsScreen} />
+      <Stack.Screen name="SectionDetailScreen" component={SectionDetailScreen} />
     </Stack.Navigator>
   );
 }

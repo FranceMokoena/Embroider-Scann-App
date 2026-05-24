@@ -5,6 +5,7 @@ const Asset = require('../models/Asset');
 const AssetTagMapping = require('../models/AssetTagMapping');
 const TagScanLog = require('../models/TagScanLog');
 const User = require('../models/User');
+const Section = require('../models/Section');
 
 const EPC_REGEX = /^[A-Z0-9]{12,24}$/;
 const STATUS_VALUES = ['Healthy', 'Repairable', 'Beyond Repair'];
@@ -20,6 +21,8 @@ const normalizeOptionalString = value => {
   const trimmed = trimString(value);
   return trimmed.length > 0 ? trimmed : undefined;
 };
+
+const escapeRegex = value => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const normalizeEpc = value => trimString(value).toUpperCase();
 
@@ -407,17 +410,120 @@ const getAssetSummary = async () => {
 };
 
 const getAvailableSections = async () => {
-  const [assetSections, legacyCategories, legacyLocations, userDepartments] = await Promise.all([
+  const [assetSections, legacyCategories, legacyLocations, userDepartments, explicitSectionNames] = await Promise.all([
     Asset.distinct('section', { section: { $exists: true, $nin: [null, ''] } }),
     Asset.distinct('category', { category: { $exists: true, $nin: [null, ''] } }),
     Asset.distinct('location', { location: { $exists: true, $nin: [null, ''] } }),
     User.distinct('department', { department: { $exists: true, $nin: [null, ''] } }),
+    Section.distinct('section', { section: { $exists: true, $nin: [null, ''] } }),
   ]);
 
-  return Array.from(new Set([...assetSections, ...legacyCategories, ...legacyLocations, ...userDepartments]
-    .map(trimString)
-    .filter(Boolean)))
+  return Array.from(new Set([
+    ...assetSections,
+    ...legacyCategories,
+    ...legacyLocations,
+    ...userDepartments,
+    ...explicitSectionNames,
+  ].map(trimString).filter(Boolean)))
     .sort((left, right) => left.localeCompare(right));
+};
+
+const createSection = async ({ section, manager, description, userId }) => {
+  const sectionName = trimString(section);
+  if (!sectionName) {
+    throw createServiceError('section is required', 400);
+  }
+
+  const managerName = trimString(manager);
+  if (!managerName) {
+    throw createServiceError('section manager is required', 400);
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw createServiceError('Invalid user', 400);
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw createServiceError('User not found', 404);
+  }
+
+  const existingSection = await Section.findOne({
+    section: { $regex: `^${escapeRegex(sectionName)}$`, $options: 'i' },
+  });
+
+  if (existingSection) {
+    throw createServiceError('Section already exists', 409);
+  }
+
+  const newSection = await Section.create({
+    section: sectionName,
+    manager: managerName,
+    description: normalizeOptionalString(description) || null,
+    createdBy: user._id,
+  });
+
+  return newSection;
+};
+
+const getSectionSummary = async () => {
+  const [assets, explicitSections] = await Promise.all([
+    Asset.find({}),
+    Section.find({}).populate('createdBy', 'username name email').lean(),
+  ]);
+
+  const sections = new Map();
+
+  for (const sectionDoc of explicitSections) {
+    const sectionName = trimString(sectionDoc.section);
+    if (!sectionName) continue;
+
+    sections.set(sectionName, {
+      section: sectionName,
+      totalAssets: 0,
+      healthyAssets: 0,
+      repairableAssets: 0,
+      beyondRepairAssets: 0,
+      createdAt: sectionDoc.createdAt || null,
+      createdBy: getAssignedByDisplayName(sectionDoc.createdBy) || null,
+    });
+  }
+
+  for (const asset of assets) {
+    const sectionName = getAssetSection(asset);
+    if (!sectionName) continue;
+
+    const assignedBy = asset.assignmentInformation?.assignedBy
+      ? getAssignedByDisplayName(asset.assignmentInformation.assignedBy)
+      : getAssignedByDisplayName(asset.updatedBy);
+
+    const existing = sections.get(sectionName) || {
+      section: sectionName,
+      totalAssets: 0,
+      healthyAssets: 0,
+      repairableAssets: 0,
+      beyondRepairAssets: 0,
+      createdAt: null,
+      createdBy: null,
+    };
+
+    existing.totalAssets += 1;
+    if (asset.status === 'Healthy') existing.healthyAssets += 1;
+    if (asset.status === 'Repairable') existing.repairableAssets += 1;
+    if (asset.status === 'Beyond Repair') existing.beyondRepairAssets += 1;
+
+    const assetCreated = asset.createdAt ? new Date(asset.createdAt) : null;
+    const existingCreated = existing.createdAt ? new Date(existing.createdAt) : null;
+
+    if (!existingCreated || (assetCreated && assetCreated < existingCreated)) {
+      existing.createdAt = asset.createdAt;
+      existing.createdBy = assignedBy || null;
+    }
+
+    sections.set(sectionName, existing);
+  }
+
+  return Array.from(sections.values()).sort((left, right) => left.section.localeCompare(right.section));
 };
 
 const getAssignmentLifecycle = async () => {
@@ -574,12 +680,14 @@ const verifyRoomInventory = async ({ section, location, epcs, userId }) => {
 module.exports = {
   createBulkAssets,
   createAsset,
+  createSection,
   deleteAsset,
   getAssetByEPC,
   getAllAssets,
   getAssetSummary,
   getAssignmentLifecycle,
   getAvailableSections,
+  getSectionSummary,
   getAvailableDepartments: getAvailableSections,
   updateAsset,
   verifyRoomInventory,

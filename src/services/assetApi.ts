@@ -144,3 +144,45 @@ export const fetchAssetsByStatus = async (status: string) => {
 
   return result.assets || [];
 };
+
+export type SectionSummary = {
+  section: string;
+  totalAssets: number;
+  healthyAssets: number;
+  repairableAssets: number;
+  beyondRepairAssets: number;
+  createdAt?: string | null;
+  createdBy?: string | null;
+};
+
+export const fetchSectionsSummary = async () => {
+  const result = await apiRequest<{ summary?: SectionSummary[] }>(
+    '/api/assets/sections/summary',
+    { method: 'GET' },
+  );
+
+  return result.summary || [];
+};
+
+export const fetchAssetsBySection = async (section: string) => {
+  const encodedSection = encodeURIComponent(section);
+  const result = await apiRequest<{ assets: AssetRecord[] }>(
+    `/api/assets?section=${encodedSection}`,
+    { method: 'GET' },
+  );
+
+  return result.assets || [];
+};
+
+export type CreateSectionPayload = {
+  section: string;
+  manager: string;
+  description?: string;
+};
+
+export const createSection = async (body: CreateSectionPayload) => {
+  return apiRequest<{ success: boolean; message: string; data?: unknown }>(
+    '/api/assets/sections',
+    { method: 'POST', body },
+  );
+};

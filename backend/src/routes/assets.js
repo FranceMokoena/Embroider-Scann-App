@@ -4,9 +4,11 @@ const express = require('express');
 const {
   createBulkAssets,
   createAsset,
+  createSection,
   deleteAsset,
   getAssetById,
   getSectionOptions,
+  getSectionsSummary,
   getAssetSummary,
   getAssignmentLifecycle,
   listAssets,
@@ -21,6 +23,8 @@ router.get('/summary', requireAuth, getAssetSummary);
 router.get('/lifecycle/history', requireAuth, getAssignmentLifecycle);
 router.get('/sections/options', requireAuth, getSectionOptions);
 router.get('/departments/options', requireAuth, getSectionOptions);
+router.get('/sections/summary', requireAuth, getSectionsSummary);
+router.post('/sections', requireAuth, createSection);
 router.get('/:id', requireAuth, getAssetById);
 router.post('/bulk-create', requireAuth, createBulkAssets);
 router.post('/', requireAuth, createAsset);
