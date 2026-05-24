@@ -170,10 +170,10 @@ const buildAssetRows = (assets: AssetRecord[]) =>
           <td>${escapeHtml(asset.department || asset.category)}</td>
           <td>${escapeHtml(asset.status)}</td>
           <td>${escapeHtml(asset.serialNumber)}</td>
+          <td>${escapeHtml(asset.assignmentInformation?.assignedBy ? String(asset.assignmentInformation.assignedBy) : '-')}</td>
+          <td>${escapeHtml(formatDate(asset.assignmentInformation?.assignedAt))}</td>
           <td>${escapeHtml(formatDate(asset.createdAt))}</td>
           <td>${escapeHtml(formatDate(asset.updatedAt))}</td>
-          <td>${escapeHtml(asset.location || asset.department || asset.category)}</td>
-          <td>${escapeHtml(asset.verificationStatus)}</td>
         </tr>
       `,
     )
@@ -213,14 +213,14 @@ export const buildAssetExportHtml = ({
           <tr>
             <th>Asset Name</th>
             <th>Asset No</th>
-            <th>EPC</th>
-            <th>Department</th>
+            <th>RFID Tag (EPC)</th>
+            <th>Section</th>
             <th>Status</th>
             <th>Serial No</th>
+            <th>Assigned By</th>
+            <th>Assignment Date</th>
             <th>Created</th>
             <th>Updated</th>
-            <th>Current Location</th>
-            <th>Verification Status</th>
           </tr>
         </thead>
         <tbody>

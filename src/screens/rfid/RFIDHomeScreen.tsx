@@ -690,15 +690,15 @@ export default function RFIDHomeScreen({ navigation }: any) {
             >
             {[
               // ERP sidebar navigation items for dedicated asset status screens
-              { label: 'Overview', icon: 'layers-outline' },
+              
               { label: 'Production', icon: 'briefcase-outline' },
               { label: 'To Repair', icon: 'construct-outline' },
               { label: 'Written Off', icon: 'close-circle-outline' },
               { label: 'Locate Asset', icon: 'locate-outline' },
               { label: 'Search Asset', icon: 'search-outline' },
               { label: 'View All Assets', icon: 'server-outline' },
-              { label: 'Department', icon: 'business-outline' },
-              { label: 'Audit Logs', icon: 'document-text-outline' },
+              { label: 'Sections', icon: 'business-outline' },
+              
               { label: 'My Profile', icon: 'person-circle-outline' },
             ].map(item => (
               <TouchableOpacity

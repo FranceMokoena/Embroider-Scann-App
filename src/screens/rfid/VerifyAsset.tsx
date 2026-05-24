@@ -20,6 +20,8 @@ import styles from './styles/verifyAssetStyles';
 import { normalizeEpc } from '../../rfid/chainwayRfid';
 import { useRFIDStreamController } from '../../rfid/RFIDStreamController';
 import { apiRequest } from '../../config/api';
+import { fetchSectionOptions } from '../../services/assetApi';
+import { notifyAssetUpdated } from '../../services/assetSync';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
 
 export default function VerifyAsset({ navigation }: any) {
@@ -83,18 +85,10 @@ export default function VerifyAsset({ navigation }: any) {
   const loadDepartments = useCallback(async () => {
     setDepartmentsLoading(true);
     try {
-      const result = await apiRequest<{ assets: any[] }>('/api/assets', {
-        method: 'GET',
-      });
-      const allDepartments = result.assets
-        .map(asset => asset.department || asset.category || asset.location || '')
-        .filter((value: string) => typeof value === 'string' && value.trim().length > 0);
-      const uniqueDepartments = Array.from(new Set(allDepartments))
-        .map(value => value.trim())
-        .sort((a, b) => a.localeCompare(b));
-      setDepartments(uniqueDepartments);
+      const sectionOptions = await fetchSectionOptions();
+      setDepartments(sectionOptions);
     } catch (error) {
-      console.error('Failed to load departments for audit dropdown', error);
+      console.error('Failed to load sections for audit dropdown', error);
     } finally {
       setDepartmentsLoading(false);
     }
@@ -106,12 +100,14 @@ export default function VerifyAsset({ navigation }: any) {
 
   useFocusEffect(
     useCallback(() => {
+      void loadDepartments();
+
       return () => {
         if (controller.isOwner(ownerId)) {
           void controller.stopScan(ownerId);
         }
       };
-    }, [controller, ownerId]),
+    }, [controller, ownerId, loadDepartments]),
   );
 
   useEffect(() => {
@@ -235,10 +231,11 @@ export default function VerifyAsset({ navigation }: any) {
         verificationStatus: 'Pending',
       }));
 
+    // FIXED: Compare against department (current assigned section), not location
     const unexpectedAssets = uniqueEpcs
       .filter(epc => {
         const asset = scannedByEpc.get(epc);
-        return asset && asset.location !== selectedLocation;
+        return asset && asset.department !== selectedLocation;
       })
       .map(epc => ({
         ...scannedByEpc.get(epc),
@@ -272,8 +269,8 @@ export default function VerifyAsset({ navigation }: any) {
 
     if (!normalizedLocation) {
       Alert.alert(
-        'Location Required',
-        'Select a department or location before starting audit.',
+        'Section Required',
+        'Select a section before starting audit.',
       );
       return;
     }
@@ -289,7 +286,7 @@ export default function VerifyAsset({ navigation }: any) {
       setAuditAssets([]);
 
       const assetsResponse = await apiRequest<{ assets: any[] }>(
-        `/api/assets?location=${encodeURIComponent(normalizedLocation)}`,
+        `/api/assets?section=${encodeURIComponent(normalizedLocation)}`,
         { method: 'GET' },
       );
 
@@ -369,7 +366,7 @@ export default function VerifyAsset({ navigation }: any) {
     if (!normalizedLocation) {
       openVerificationModal(
         'failure',
-        'Select a department or location before verification.',
+        'Select a section before verification.',
       );
       return;
     }
@@ -387,12 +384,22 @@ export default function VerifyAsset({ navigation }: any) {
       const result = await apiRequest<{ audit: any }>('/api/rfid/verify-room', {
         method: 'POST',
         body: {
-          location: normalizedLocation,
+          section: normalizedLocation,
           epcs: uniqueEpcs,
         },
       });
 
       setAuditResult(result.audit);
+      if (Array.isArray(result.audit?.matchedAssets)) {
+        result.audit.matchedAssets.forEach((asset: any) => {
+          if (asset?.id) {
+            notifyAssetUpdated(asset.id);
+          }
+        });
+        if (result.audit.matchedAssets.length > 0) {
+          notifyAssetUpdated();
+        }
+      }
       const matchedAssets = result.audit.matchedAssets || [];
       const missingAssets = result.audit.missingAssets || [];
       const unexpectedAssets = result.audit.unexpectedAssets || [];
@@ -405,8 +412,8 @@ export default function VerifyAsset({ navigation }: any) {
       openVerificationModal(
         isVerified ? 'success' : 'failure',
         isVerified
-          ? 'The scanned asset list has been verified against the selected department/location.'
-          : 'Verification completed with unresolved room mismatches. Review the audit result table.',
+          ? 'The scanned asset list has been verified against the selected section.'
+          : 'Verification completed with unresolved section mismatches. Review the audit result table.',
       );
 
       const matchedEpcs = new Set(matchedAssets.map((asset: any) => asset.epc));
@@ -488,18 +495,11 @@ export default function VerifyAsset({ navigation }: any) {
               <Text style={styles.summaryLabel}>Unknown</Text>
             </View>
           </View>
-        ) : (
-          <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>Room verification ready</Text>
-            <Text style={styles.infoDescription}>
-              Scan tags and submit verification to compare the room inventory against the asset database.
-            </Text>
-          </View>
-        )}
+        ) : null}
 
-        {/* LOCATION */}
+        {/* SECTION */}
         <View style={{ marginTop: 14 }}>
-          <Text style={styles.sectionLabel}>Department / Location</Text>
+          <Text style={styles.sectionLabel}>Select Section</Text>
 
           <TouchableOpacity
             style={styles.dropdownButton}
@@ -510,7 +510,7 @@ export default function VerifyAsset({ navigation }: any) {
               numberOfLines={1}
               style={styles.dropdownButtonText}
             >
-              {location || 'Select department or location'}
+              {location || 'Select a section'}
             </Text>
 
             <Ionicons
@@ -526,7 +526,7 @@ export default function VerifyAsset({ navigation }: any) {
                 <Ionicons name="search-outline" size={16} color="#64748b" />
                 <TextInput
                   style={styles.dropdownSearchInput}
-                  placeholder="Search department/location"
+                  placeholder="Search sections"
                   placeholderTextColor="#94a3b8"
                   value={departmentSearch}
                   onChangeText={setDepartmentSearch}
@@ -538,11 +538,11 @@ export default function VerifyAsset({ navigation }: any) {
                 <ActivityIndicator size="small" color={PRIMARY_BLUE} />
               ) : departments.length === 0 ? (
                 <Text style={styles.dropdownEmptyText}>
-                  No departments available yet.
+                  No sections available yet.
                 </Text>
               ) : filteredDepartments.length === 0 ? (
                 <Text style={styles.dropdownEmptyText}>
-                  No matching departments found.
+                  No matching sections found.
                 </Text>
               ) : (
                 filteredDepartments.map(department => (

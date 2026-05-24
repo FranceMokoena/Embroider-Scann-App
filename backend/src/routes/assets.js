@@ -5,7 +5,7 @@ const {
   createBulkAssets,
   createAsset,
   deleteAsset,
-  getDepartmentOptions,
+  getSectionOptions,
   getAssetSummary,
   getAssignmentLifecycle,
   listAssets,
@@ -18,7 +18,9 @@ const router = express.Router();
 router.get('/', requireAuth, listAssets);
 router.get('/summary', requireAuth, getAssetSummary);
 router.get('/lifecycle/history', requireAuth, getAssignmentLifecycle);
-router.get('/departments/options', requireAuth, getDepartmentOptions);
+router.get('/sections/options', requireAuth, getSectionOptions);
+router.get('/departments/options', requireAuth, getSectionOptions);
+router.get('/:id', requireAuth, getAssetById);
 router.post('/bulk-create', requireAuth, createBulkAssets);
 router.post('/', requireAuth, createAsset);
 router.patch('/:id', requireAuth, updateAsset);

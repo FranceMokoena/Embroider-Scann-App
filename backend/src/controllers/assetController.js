@@ -62,6 +62,19 @@ const listAssets = async (req, res) => {
   }
 };
 
+const getAssetById = async (req, res) => {
+  try {
+    const asset = await assetService.getAssetById(req.params.id);
+
+    return res.status(200).json({
+      success: true,
+      data: asset,
+    });
+  } catch (error) {
+    return sendAssetError(res, error, 'Failed to load asset');
+  }
+};
+
 const getAssetSummary = async (_req, res) => {
   try {
     const summary = await assetService.getAssetSummary();
@@ -119,16 +132,16 @@ const getAssignmentLifecycle = async (req, res) => {
   }
 };
 
-const getDepartmentOptions = async (_req, res) => {
+const getSectionOptions = async (_req, res) => {
   try {
-    const departments = await assetService.getAvailableDepartments();
+    const sections = await assetService.getAvailableSections();
 
     return res.status(200).json({
       success: true,
-      departments,
+      sections,
     });
   } catch (error) {
-    return sendAssetError(res, error, 'Failed to load department options');
+    return sendAssetError(res, error, 'Failed to load section options');
   }
 };
 
@@ -136,7 +149,8 @@ module.exports = {
   createBulkAssets,
   createAsset,
   deleteAsset,
-  getDepartmentOptions,
+  getAssetById,
+  getSectionOptions,
   getAssetSummary,
   getAssignmentLifecycle,
   listAssets,

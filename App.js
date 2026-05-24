@@ -17,7 +17,6 @@ import AuthNavigator from './src/screens/navigation/AuthNavigator';
 import { StatusBar } from 'expo-status-bar';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
-import { RELEASE_MARKER } from './src/config/releaseMarker';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -35,12 +34,12 @@ export default function App() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
 
-  console.log('RELEASE_MARKER:', RELEASE_MARKER);
-  console.log('Updates.enabled:', Updates.isEnabled);
-  console.log('Updates.channel:', Updates.channel);
-  console.log('Updates.runtimeVersion:', Updates.runtimeVersion);
-  console.log('Updates.updateId:', Updates.updateId);
-  console.log('Updates.isEmbeddedLaunch:', Updates.isEmbeddedLaunch);
+  // Add version logging for update verification
+  console.log('🚀 App Version: 1.0.6 - Improved positioning and sizing of scanner splash screen');
+  console.log('📱 Update channel: preview');
+  console.log('✅ Professional scanner splash screen is now the ONLY splash screen');
+  console.log('🗑️ Old GIF splash screen and CustomSplashScreen.tsx completely removed');
+  console.log('📐 Improved positioning - elements moved higher and better centered');
 
   useEffect(() => {
     // Immediately hide the native splash screen to show our custom one
@@ -140,35 +139,20 @@ export default function App() {
 
   const checkUpdates = async () => {
     try {
-      if (__DEV__ || !Updates.isEnabled) {
-        console.log('Skipping OTA check (dev or updates disabled)');
-        return;
-      }
-
-      console.log('Checking for OTA update...', RELEASE_MARKER);
+      console.log('🔍 Checking for updates...');
       const update = await Updates.checkForUpdateAsync();
-
-      if (!update.isAvailable) {
-        console.log('No OTA update available');
-        return;
+      if (update.isAvailable) {
+        console.log('✅ Update available, showing update modal');
+        setUpdateAvailable(true);
+      } else {
+        console.log('✅ App is up to date');
       }
-
-      console.log('OTA update available — fetching and reloading');
-      setUpdateAvailable(true);
-      Toast.show({
-        type: 'info',
-        text1: 'Installing update',
-        text2: RELEASE_MARKER,
-      });
-
-      await Updates.fetchUpdateAsync();
-      await Updates.reloadAsync();
     } catch (e) {
-      console.log('Update check failed:', e);
+      console.log('❌ Update check failed:', e);
       Toast.show({
         type: 'error',
         text1: 'Update Check Failed',
-        text2: e instanceof Error ? e.message : 'Unable to check for updates.',
+        text2: 'Unable to check for updates at the moment.',
       });
     } finally {
       setIsLoading(false);
@@ -327,7 +311,6 @@ export default function App() {
         >
           
           <Text style={styles.scannerText}>Amrod Digital Asset Tracking System</Text>
-          <Text style={styles.markerText}>{RELEASE_MARKER}</Text>
         </Animated.View>
 
         {/* Loading indicator */}
@@ -595,14 +578,6 @@ const styles = StyleSheet.create({
   scannerText: {
     fontSize: 14,
     color: '#9ca3af',
-  },
-  markerText: {
-    marginTop: 10,
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#b91c1c',
-    textAlign: 'center',
-    paddingHorizontal: 12,
   },
   loadingContainer: {
     position: 'absolute',

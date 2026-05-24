@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
+  Modal,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -18,6 +20,14 @@ import { apiRequest } from '../../config/api';
 import { normalizeEpc } from '../../rfid/chainwayRfid';
 import { useRFIDStreamController } from '../../rfid/RFIDStreamController';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
+import {
+  deleteAssetById,
+  fetchAssetById,
+  fetchDepartmentOptions,
+  patchAssetById,
+} from '../../services/assetApi';
+import { exportAssetsToPdf } from '../../utils/assetPdfExport';
+import { subscribeToAssetSync } from '../../services/assetSync';
 
 type SearchMode = 'epc' | 'assetNumber' | 'serialNumber' | 'assetName' | 'department';
 type SearchStatus = 'Idle' | 'Searching' | 'Listening' | 'Found';
@@ -110,6 +120,9 @@ export default function SearchAssetScreen({ navigation }: any) {
   const [foundAsset, setFoundAsset] = useState<AssetRecord | null>(null);
   const [capturedEpc, setCapturedEpc] = useState('');
   const [message, setMessage] = useState('');
+  const [sectionDialogVisible, setSectionDialogVisible] = useState(false);
+  const [sectionValue, setSectionValue] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
   const dropdownAnim = useRef(new Animated.Value(0)).current;
   const foundPulse = useRef(new Animated.Value(0)).current;
@@ -124,6 +137,114 @@ export default function SearchAssetScreen({ navigation }: any) {
   const latestEntries = snapshot.entries;
   const selectedOption = searchOptions.find(option => option.value === searchMode);
   const tableAssets = foundAsset ? [foundAsset] : targetAssets;
+  const activeAsset = foundAsset || targetAssets[0] || null;
+
+  const refreshSearchState = async () => {
+    if (activeAsset) {
+      setQuery(activeAsset.epc || activeAsset.assetNumber || activeAsset.serialNumber || '');
+      setSearchStatus('Found');
+    }
+  };
+
+  const handleExportAsset = async () => {
+    if (!activeAsset) {
+      Alert.alert('No asset selected', 'Resolve an asset before exporting.');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      await exportAssetsToPdf({
+        title: 'Search Asset Export',
+        statusLabel: activeAsset.assetNumber || 'Asset',
+        assets: [activeAsset],
+      });
+    } catch (error) {
+      Alert.alert('Export failed', error instanceof Error ? error.message : 'Unable to export asset.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteAsset = async () => {
+    if (!activeAsset) {
+      Alert.alert('No asset selected', 'Resolve an asset before deleting.');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Asset',
+      `Remove ${getAssetName(activeAsset)} from the registry? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setActionLoading(true);
+              await deleteAssetById(getAssetId(activeAsset));
+              Alert.alert('Deleted', `${getAssetName(activeAsset)} was removed.`);
+              resetTemporarySearchState();
+              setFoundAsset(null);
+              setTargetAssets([]);
+            } catch (error) {
+              Alert.alert('Delete failed', error instanceof Error ? error.message : 'Unable to delete asset.');
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleChangeStatus = async (status: string) => {
+    if (!activeAsset) {
+      Alert.alert('No asset selected', 'Resolve an asset before changing status.');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      await patchAssetById(getAssetId(activeAsset), { status });
+      Alert.alert('Status updated', `${getAssetName(activeAsset)} is now ${status}.`);
+      await refreshSearchState();
+    } catch (error) {
+      Alert.alert('Status update failed', error instanceof Error ? error.message : 'Unable to update status.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleAssignSection = async () => {
+    if (!activeAsset) {
+      Alert.alert('No asset selected', 'Resolve an asset before assigning section.');
+      return;
+    }
+
+    if (!sectionValue.trim()) {
+      Alert.alert('Section required', 'Enter a section name to assign this asset.');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      await patchAssetById(getAssetId(activeAsset), { department: sectionValue.trim() });
+      Alert.alert('Assignment saved', `${getAssetName(activeAsset)} assigned to ${sectionValue.trim()}.`);
+      setSectionDialogVisible(false);
+      setSectionValue('');
+      await refreshSearchState();
+    } catch (error) {
+      Alert.alert('Assignment failed', error instanceof Error ? error.message : 'Unable to update section.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleTrackLifecycle = () => {
+    navigation.navigate('AllAssetsScreen');
+  };
 
   useEffect(() => {
     if (dropdownOpen) {
@@ -182,12 +303,24 @@ export default function SearchAssetScreen({ navigation }: any) {
 
   useFocusEffect(
     useCallback(() => {
+      const unsubscribe = subscribeToAssetSync(async (event) => {
+        if (activeAsset && (event === 'assetDeleted' || event === 'assetUpdated' || event === 'assetStatusChanged')) {
+          try {
+            const updatedAsset = await fetchAssetById(getAssetId(activeAsset));
+            setFoundAsset(updatedAsset || null);
+          } catch (error) {
+            console.error('Failed to refresh asset after sync', error);
+          }
+        }
+      });
+
       return () => {
+        unsubscribe();
         if (controller.isOwner(ownerId)) {
           void controller.stopScan(ownerId);
         }
       };
-    }, [controller, ownerId]),
+    }, [controller, ownerId, activeAsset]),
   );
 
   const resetTemporarySearchState = () => {
@@ -631,6 +764,108 @@ export default function SearchAssetScreen({ navigation }: any) {
               </View>
             </ScrollView>
           )}
+
+          {activeAsset ? (
+            <View style={styles.actionButtonGroup}>
+              <TouchableOpacity
+                style={[styles.smallActionButton, actionLoading && styles.disabledButton]}
+                onPress={() => Alert.alert(
+                  'Change Asset Status',
+                  `Update ${getAssetName(activeAsset)} status to:`,
+                  [
+                    { text: 'Healthy', onPress: () => handleChangeStatus('Healthy') },
+                    { text: 'Repairable', onPress: () => handleChangeStatus('Repairable') },
+                    { text: 'Beyond Repair', onPress: () => handleChangeStatus('Beyond Repair') },
+                    { text: 'Cancel', style: 'cancel' },
+                  ],
+                )}
+                disabled={actionLoading}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="swap-horizontal-outline" size={16} color="#0f172a" />
+                <Text style={styles.smallActionButtonText}>Change Status</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.smallActionButton, actionLoading && styles.disabledButton]}
+                onPress={handleExportAsset}
+                disabled={actionLoading}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="download-outline" size={16} color="#0f172a" />
+                <Text style={styles.smallActionButtonText}>Export</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.smallActionButton, actionLoading && styles.disabledButton]}
+                onPress={handleDeleteAsset}
+                disabled={actionLoading}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="trash-outline" size={16} color="#0f172a" />
+                <Text style={styles.smallActionButtonText}>Delete</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.smallActionButton, actionLoading && styles.disabledButton]}
+                onPress={() => setSectionDialogVisible(true)}
+                disabled={actionLoading}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="layers-outline" size={16} color="#0f172a" />
+                <Text style={styles.smallActionButtonText}>Assign Section</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.smallActionButton, actionLoading && styles.disabledButton]}
+                onPress={handleTrackLifecycle}
+                disabled={actionLoading}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="pulse-outline" size={16} color="#0f172a" />
+                <Text style={styles.smallActionButtonText}>Track Lifecycle</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          {sectionDialogVisible ? (
+            <Modal transparent visible animationType="fade">
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>Assign to Section</Text>
+                  <Text style={styles.modalSubtitle}>
+                    Enter the section or department name where this asset should be stored.
+                  </Text>
+                  <TextInput
+                    style={styles.sectionInput}
+                    placeholder="Section name"
+                    placeholderTextColor="#94a3b8"
+                    value={sectionValue}
+                    onChangeText={setSectionValue}
+                    editable={!actionLoading}
+                  />
+                  <View style={styles.modalButtons}>
+                    <TouchableOpacity
+                      style={[styles.smallActionButton, styles.modalCancelButton]}
+                      onPress={() => setSectionDialogVisible(false)}
+                      disabled={actionLoading}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={[styles.smallActionButtonText, { color: '#475569' }]}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.smallActionButton, styles.modalConfirmButton]}
+                      onPress={handleAssignSection}
+                      disabled={actionLoading}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={[styles.smallActionButtonText, { color: '#ffffff' }]}>Save</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </Modal>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -839,7 +1074,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 40,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#cbd5e1',
@@ -851,10 +1086,11 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     marginTop: 10,
+    gap: 8,
   },
   startButton: {
     flex: 1,
-    height: 44,
+    height: 40,
     borderRadius: 8,
     backgroundColor: PRIMARY_BLUE,
     flexDirection: 'row',
@@ -1024,5 +1260,87 @@ const styles = StyleSheet.create({
   verifiedCell: {
     fontWeight: '800',
     color: '#166534',
+  },
+  actionButtonGroup: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 14,
+    justifyContent: 'flex-start',
+  },
+  smallActionButton: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  smallActionButtonText: {
+    marginLeft: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 14,
+    backgroundColor: '#ffffff',
+    padding: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 16,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 6,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: '#475569',
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  sectionInput: {
+    width: '100%',
+    minHeight: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0f172a',
+    backgroundColor: '#f8fafc',
+    marginBottom: 14,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  modalCancelButton: {
+    backgroundColor: '#f8fafc',
+  },
+  modalConfirmButton: {
+    backgroundColor: PRIMARY_BLUE,
+    borderColor: PRIMARY_BLUE,
   },
 });

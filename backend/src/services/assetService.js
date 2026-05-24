@@ -3,6 +3,7 @@
 const mongoose = require('mongoose');
 const Asset = require('../models/Asset');
 const AssetTagMapping = require('../models/AssetTagMapping');
+const TagScanLog = require('../models/TagScanLog');
 const User = require('../models/User');
 
 const EPC_REGEX = /^[A-Z0-9]{12,24}$/;
@@ -22,6 +23,22 @@ const normalizeOptionalString = value => {
 
 const normalizeEpc = value => trimString(value).toUpperCase();
 
+const getAssignedByDisplayName = assignedBy => {
+  if (!assignedBy) {
+    return null;
+  }
+
+  if (typeof assignedBy === 'string') {
+    return assignedBy;
+  }
+
+  if (assignedBy.username) {
+    return assignedBy.username;
+  }
+
+  return String(assignedBy._id || assignedBy);
+};
+
 const mapAssetResponse = asset => ({
   id: asset._id,
   assetName: asset.assetName,
@@ -30,10 +47,27 @@ const mapAssetResponse = asset => ({
   epc: asset.epc,
   category: asset.category || null,
   department: asset.category || null,
+  section: asset.category || null,
   status: asset.status || null,
   location: asset.location || null,
   assignedTo: asset.assignedTo || null,
-  assignmentInformation: asset.assignmentInformation || null,
+  assignmentInformation: asset.assignmentInformation ? {
+    ...asset.assignmentInformation,
+    assignedBy: getAssignedByDisplayName(asset.assignmentInformation.assignedBy),
+  } : null,
+  verificationStatus: asset.verificationStatus || null,
+  verifiedAt: asset.verifiedAt || null,
+  verifiedBy: getAssignedByDisplayName(asset.verifiedBy),
+  updatedBy: getAssignedByDisplayName(asset.updatedBy),
+  statusHistory: Array.isArray(asset.statusHistory)
+    ? asset.statusHistory.map(entry => ({
+      previousStatus: entry.previousStatus || null,
+      newStatus: entry.newStatus || null,
+      changedAt: entry.changedAt,
+      changedBy: getAssignedByDisplayName(entry.changedBy),
+      source: entry.source || null,
+    }))
+    : [],
   assignmentLifecycleHistory: asset.assignmentLifecycleHistory || [],
   verificationHistory: asset.verificationHistory || [],
   createdAt: asset.createdAt,
@@ -71,7 +105,9 @@ const validateCreateAssetInput = payload => {
     assetNumber,
     serialNumber: normalizeOptionalString(payload.serialNumber),
     epc,
-    category: normalizeOptionalString(payload.category) || normalizeOptionalString(payload.department),
+    category: normalizeOptionalString(payload.category)
+      || normalizeOptionalString(payload.section)
+      || normalizeOptionalString(payload.department),
     status,
     location: normalizeOptionalString(payload.location),
     assignedTo: normalizeOptionalString(payload.assignedTo),
@@ -171,8 +207,23 @@ const getAssetByEPC = async epc => {
     throw createServiceError('epc is required', 400);
   }
 
-  const asset = await Asset.findOne({ epc: normalizedEpc });
+  const asset = await Asset.findOne({ epc: normalizedEpc })
+    .populate('assignmentInformation.assignedBy', 'username department');
   return asset ? mapAssetResponse(asset) : null;
+};
+
+const getAssetById = async assetId => {
+  if (!mongoose.Types.ObjectId.isValid(assetId)) {
+    throw createServiceError('Invalid asset id', 400);
+  }
+
+  const asset = await Asset.findById(assetId)
+    .populate('assignmentInformation.assignedBy', 'username department');
+  if (!asset) {
+    throw createServiceError('Asset not found', 404);
+  }
+
+  return mapAssetResponse(asset);
 };
 
 const buildAssetFilter = filters => {
@@ -186,8 +237,8 @@ const buildAssetFilter = filters => {
     query.location = trimString(filters.location);
   }
 
-  if (filters.department) {
-    query.category = trimString(filters.department);
+  if (filters.department || filters.section) {
+    query.category = trimString(filters.section || filters.department);
   }
 
   if (filters.q) {
@@ -204,7 +255,9 @@ const buildAssetFilter = filters => {
 };
 
 const getAllAssets = async (filters = {}) => {
-  const assets = await Asset.find(buildAssetFilter(filters)).sort({ createdAt: -1 });
+  const assets = await Asset.find(buildAssetFilter(filters))
+    .sort({ createdAt: -1 })
+    .populate('assignmentInformation.assignedBy', 'username department');
   return assets.map(mapAssetResponse);
 };
 
@@ -220,15 +273,16 @@ const updateAsset = async (assetId, payload = {}) => {
     throw createServiceError('Asset not found', 404);
   }
 
-  if (payload.department !== undefined) {
-    const dept = trimString(payload.department);
+  const requestedSection = payload.section !== undefined ? payload.section : payload.department;
+  if (requestedSection !== undefined) {
+    const dept = trimString(requestedSection);
     if (!dept) {
-      throw createServiceError('department cannot be empty', 400);
+      throw createServiceError('section cannot be empty', 400);
     }
 
-    const existingDepartments = await getAvailableDepartments();
-    if (!existingDepartments.includes(dept)) {
-      throw createServiceError('department must already exist in the system', 400);
+    const existingSections = await getAvailableSections();
+    if (!existingSections.includes(dept)) {
+      throw createServiceError('section must already exist in the system', 400);
     }
 
     updates.category = dept;
@@ -274,6 +328,21 @@ const updateAsset = async (assetId, payload = {}) => {
     };
   }
 
+  if (updates.status !== undefined && updates.status !== asset.status) {
+    asset.statusHistory = asset.statusHistory || [];
+    asset.statusHistory.push({
+      previousStatus: asset.status || undefined,
+      newStatus: updates.status,
+      changedAt: new Date(),
+      changedBy: payload.userId,
+      source: payload.assignmentSource || 'status_update',
+    });
+  }
+
+  if (payload.userId) {
+    asset.updatedBy = payload.userId;
+  }
+
   Object.assign(asset, updates);
   await asset.save();
 
@@ -290,15 +359,23 @@ const deleteAsset = async assetId => {
     throw createServiceError('Asset not found', 404);
   }
 
-  await AssetTagMapping.updateMany(
-    { assetId: asset._id, status: 'active' },
-    {
-      $set: {
-        status: 'removed',
-        unassignedAt: new Date(),
+  await Promise.all([
+    AssetTagMapping.updateMany(
+      { assetId: asset._id, status: 'active' },
+      {
+        $set: {
+          status: 'removed',
+          unassignedAt: new Date(),
+          unassignedBy: 'asset_deleted',
+          reason: 'Asset deleted from system',
+        },
       },
-    },
-  );
+    ),
+    require('../models/TagScanLog').updateMany(
+      { assetId: asset._id },
+      { $unset: { assetId: '' } },
+    ),
+  ]);
 
   return mapAssetResponse(asset);
 };
@@ -319,13 +396,13 @@ const getAssetSummary = async () => {
   };
 };
 
-const getAvailableDepartments = async () => {
-  const [assetDepartments, userDepartments] = await Promise.all([
+const getAvailableSections = async () => {
+  const [assetSections, userDepartments] = await Promise.all([
     Asset.distinct('category', { category: { $exists: true, $nin: [null, ''] } }),
     User.distinct('department', { department: { $exists: true, $nin: [null, ''] } }),
   ]);
 
-  return Array.from(new Set([...assetDepartments, ...userDepartments]
+  return Array.from(new Set([...assetSections, ...userDepartments]
     .map(trimString)
     .filter(Boolean)))
     .sort((left, right) => left.localeCompare(right));
@@ -373,10 +450,10 @@ const getAssignmentLifecycle = async () => {
   );
 };
 
-const verifyRoomInventory = async ({ location, epcs, userId }) => {
-  const normalizedLocation = normalizeOptionalString(location);
+const verifyRoomInventory = async ({ location, section, epcs, userId }) => {
+  const normalizedLocation = normalizeOptionalString(location || section);
   if (!normalizedLocation) {
-    throw createServiceError('location is required', 400);
+    throw createServiceError('location or section is required', 400);
   }
 
   const scannedEpcs = Array.isArray(epcs)
@@ -389,8 +466,10 @@ const verifyRoomInventory = async ({ location, epcs, userId }) => {
 
   const uniqueScannedEpcs = Array.from(new Set(scannedEpcs));
   const duplicateReads = scannedEpcs.length - uniqueScannedEpcs.length;
+  
+  // FIXED: Query by category (assigned section), not location
   const [expectedAssets, scannedAssets] = await Promise.all([
-    Asset.find({ location: normalizedLocation }).sort({ assetName: 1 }),
+    Asset.find({ category: normalizedLocation }).sort({ assetName: 1 }),
     Asset.find({ epc: { $in: uniqueScannedEpcs } }),
   ]);
 
@@ -405,10 +484,11 @@ const verifyRoomInventory = async ({ location, epcs, userId }) => {
     .filter(asset => !uniqueScannedEpcs.includes(asset.epc))
     .map(mapAssetResponse);
 
+  // FIXED: Compare against category (current assigned section), not location
   const unexpectedAssets = uniqueScannedEpcs
     .filter(epc => {
       const asset = scannedByEpc.get(epc);
-      return asset && asset.location !== normalizedLocation;
+      return asset && asset.category !== normalizedLocation;
     })
     .map(epc => mapAssetResponse(scannedByEpc.get(epc)));
 
@@ -450,6 +530,19 @@ const verifyRoomInventory = async ({ location, epcs, userId }) => {
         },
       }],
     );
+
+    if (matchedIds.size > 0) {
+      await Asset.updateMany(
+        { _id: { $in: Array.from(matchedIds) } },
+        {
+          $set: {
+            verificationStatus: 'Verified',
+            verifiedAt: new Date(),
+            verifiedBy: userId,
+          },
+        },
+      );
+    }
   }
 
   return {
@@ -476,7 +569,8 @@ module.exports = {
   getAllAssets,
   getAssetSummary,
   getAssignmentLifecycle,
-  getAvailableDepartments,
+  getAvailableSections,
+  getAvailableDepartments: getAvailableSections,
   updateAsset,
   verifyRoomInventory,
 };

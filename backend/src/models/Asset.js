@@ -45,6 +45,11 @@ const assetSchema = new mongoose.Schema({
     enum: STATUS_VALUES,
     default: undefined,
   },
+  verificationStatus: {
+    type: String,
+    set: trimString,
+    default: undefined,
+  },
   location: {
     type: String,
     set: trimString,
@@ -59,6 +64,18 @@ const assetSchema = new mongoose.Schema({
     assignedAt: { type: Date },
     assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     source: { type: String, set: trimString },
+  },
+  statusHistory: [{
+    previousStatus: { type: String, set: trimString },
+    newStatus: { type: String, set: trimString, required: true },
+    changedAt: { type: Date, default: () => new Date() },
+    changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    source: { type: String, set: trimString },
+  }],
+  updatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: undefined,
   },
   assignmentLifecycleHistory: [{
     fromSection: { type: String, set: trimString },

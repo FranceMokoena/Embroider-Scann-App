@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { apiRequest } from '../../config/api';
 import { normalizeEpc } from '../../rfid/chainwayRfid';
-import { getAssetId, patchAssetById } from '../../services/assetApi';
+import { fetchDepartmentOptions, getAssetId, patchAssetById } from '../../services/assetApi';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
 import { exportAssetsToPdf, exportLifecycleToPdf } from '../../utils/assetPdfExport';
 
@@ -197,13 +197,10 @@ export default function AllAssetsScreen({ navigation }: any) {
     setDepartmentsLoading(true);
 
     try {
-      const result = await apiRequest<{ departments?: string[] }>('/api/assets/departments/options', {
-        method: 'GET',
-      });
-
-      setDepartmentOptions((result.departments || []).filter(Boolean));
+      const options = await fetchDepartmentOptions();
+      setDepartmentOptions(options);
     } catch (error) {
-      console.error('Failed to load department options', error);
+      console.error('Failed to load section options', error);
       setDepartmentOptions([]);
     } finally {
       setDepartmentsLoading(false);
@@ -447,12 +444,8 @@ export default function AllAssetsScreen({ navigation }: any) {
         </View>
       </View>
 
-      <ScrollView
-        style={styles.topScroll}
-        contentContainerStyle={styles.topScrollContent}
-        keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled
-      >
+      <View style={styles.topScroll}>
+        <View style={styles.topScrollContent}>
         <View style={styles.filterPanel}>
           <View style={styles.filterHeaderRow}>
             <View>
@@ -527,150 +520,9 @@ export default function AllAssetsScreen({ navigation }: any) {
           </View>
         </View>
 
-        <View style={styles.assignPanel}>
-          <Text style={styles.eyebrow}>Registry Controls</Text>
-          <Text style={styles.filterTitle}>Department / Section Assignment</Text>
-          <Text style={styles.assignHint}>
-            Match assets by a field and value, then assign all matches to a department or section.
-          </Text>
-
-          <Text style={styles.assignSubLabel}>Match by</Text>
-          <View style={styles.searchRow}>
-            <View style={styles.dropdownWrap}>
-              <TouchableOpacity
-                style={styles.dropdownButton}
-                onPress={() => setAssignFieldDropdownOpen(previous => !previous)}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.dropdownButtonText} numberOfLines={1}>
-                  {selectedAssignFilter?.label || 'Asset Number'}
-                </Text>
-                <Ionicons
-                  name={assignFieldDropdownOpen ? 'chevron-up' : 'chevron-down'}
-                  size={16}
-                  color="#334155"
-                />
-              </TouchableOpacity>
-
-              {assignFieldDropdownOpen ? (
-                <View style={styles.dropdownList}>
-                  {filterOptions.map(option => (
-                    <TouchableOpacity
-                      key={option.value}
-                      style={[
-                        styles.dropdownItem,
-                        assignFilterMode === option.value && styles.dropdownItemActive,
-                      ]}
-                      onPress={() => {
-                        setAssignFilterMode(option.value);
-                        setAssignFieldDropdownOpen(false);
-                      }}
-                      activeOpacity={0.75}
-                    >
-                      <Text style={[
-                        styles.dropdownItemText,
-                        assignFilterMode === option.value && styles.dropdownItemTextActive,
-                      ]}
-                      >
-                        {option.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ) : null}
-            </View>
-
-            <TextInput
-              style={styles.searchInput}
-              placeholder={
-                assignFilterMode === 'epc'
-                  ? 'Enter EPC to match'
-                  : 'Enter value to match'
-              }
-              placeholderTextColor="#94a3b8"
-              value={assignFilterValue}
-              onChangeText={text =>
-                setAssignFilterValue(assignFilterMode === 'epc' ? normalizeEpc(text) : text)
-              }
-              autoCapitalize={assignFilterMode === 'epc' ? 'characters' : 'none'}
-              autoCorrect={false}
-            />
-          </View>
-
-          <Text style={styles.assignSubLabel}>Assign to department / section</Text>
-          <View style={styles.searchRow}>
-            <View style={styles.dropdownWrap}>
-              <TouchableOpacity
-                style={styles.dropdownButton}
-                onPress={() => setAssignDeptDropdownOpen(previous => !previous)}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.dropdownButtonText} numberOfLines={1}>
-                  {assignTargetDepartment || (departmentsLoading ? 'Loading...' : 'Select existing...')}
-                </Text>
-                <Ionicons
-                  name={assignDeptDropdownOpen ? 'chevron-up' : 'chevron-down'}
-                  size={16}
-                  color="#334155"
-                />
-              </TouchableOpacity>
-
-              {assignDeptDropdownOpen ? (
-                <View style={[styles.dropdownList, styles.deptDropdownList]}>
-                  <ScrollView nestedScrollEnabled style={{ maxHeight: 180 }}>
-                    {availableDepartments.length === 0 ? (
-                      <Text style={styles.dropdownEmpty}>
-                        No departments are available in the system.
-                      </Text>
-                    ) : (
-                      availableDepartments.map(dept => (
-                        <TouchableOpacity
-                          key={dept}
-                          style={[
-                            styles.dropdownItem,
-                            assignTargetDepartment === dept && styles.dropdownItemActive,
-                          ]}
-                          onPress={() => {
-                            setAssignTargetDepartment(dept);
-                            setAssignDeptDropdownOpen(false);
-                          }}
-                          activeOpacity={0.75}
-                        >
-                          <Text
-                            style={[
-                              styles.dropdownItemText,
-                              assignTargetDepartment === dept && styles.dropdownItemTextActive,
-                            ]}
-                            numberOfLines={2}
-                          >
-                            {dept}
-                          </Text>
-                        </TouchableOpacity>
-                      ))
-                    )}
-                  </ScrollView>
-                </View>
-              ) : null}
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.assignButton, isApplyingAssignment && styles.assignButtonDisabled]}
-            onPress={handleApplyDepartmentAssignment}
-            disabled={isApplyingAssignment}
-            activeOpacity={0.85}
-          >
-            {isApplyingAssignment ? (
-              <ActivityIndicator size="small" color="#ffffff" />
-            ) : (
-              <>
-                <Ionicons name="git-branch-outline" size={17} color="#ffffff" />
-                <Text style={styles.assignButtonText}>Apply assignment</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+        
+      </View>
+      </View>
 
       <View style={styles.tableSection}>
         <View style={styles.tableHeaderBar}>
@@ -685,7 +537,7 @@ export default function AllAssetsScreen({ navigation }: any) {
               <Text style={styles.syncText}>{loading ? 'Syncing' : 'Current'}</Text>
             </View>
             <TouchableOpacity
-              style={[styles.exportButton, isExportingAssets && styles.exportButtonDisabled]}
+              style={[styles.exportButtonCompact, isExportingAssets && styles.exportButtonDisabled]}
               onPress={handleExportAssets}
               disabled={isExportingAssets}
               activeOpacity={0.85}
@@ -693,9 +545,8 @@ export default function AllAssetsScreen({ navigation }: any) {
               {isExportingAssets ? (
                 <ActivityIndicator size="small" color="#ffffff" />
               ) : (
-                <Ionicons name="download-outline" size={15} color="#ffffff" />
+                <Ionicons name="download-outline" size={14} color="#ffffff" />
               )}
-              <Text style={styles.exportButtonText}>Export</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -712,13 +563,17 @@ export default function AllAssetsScreen({ navigation }: any) {
             horizontal
             showsHorizontalScrollIndicator
             style={styles.tableScroll}
+            // allow nested vertical scrolling for child FlatList (Android)
+            nestedScrollEnabled
+            // help lock horizontal/vertical gesture direction so vertical swipes can reach the inner list
+            directionalLockEnabled
           >
             <View style={styles.table}>
               <View style={[styles.tableRow, styles.tableHeaderRow]}>
                 <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Asset Name</Text>
                 <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Asset Number</Text>
                 <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>EPC</Text>
-                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Department</Text>
+                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Section</Text>
                 <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Status</Text>
                 <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Serial Number</Text>
                 <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Created Date</Text>
@@ -729,87 +584,32 @@ export default function AllAssetsScreen({ navigation }: any) {
 
               <FlatList
                 style={styles.assetList}
+                contentContainerStyle={styles.assetListContent}
                 data={filteredAssets}
                 keyExtractor={(item, index) => `${getAssetId(item)}-${index}`}
-                renderItem={renderAssetRow}
+                renderItem={(props) => {
+                  // debug: ensure renderItem fires
+                  // console.log('renderAssetRow', props.index);
+                  return renderAssetRow(props);
+                }}
+                // allow nested vertical scrolling when inside a horizontal ScrollView
+                nestedScrollEnabled
+                showsVerticalScrollIndicator
                 initialNumToRender={18}
                 maxToRenderPerBatch={18}
                 windowSize={8}
-                removeClippedSubviews
+                
                 refreshControl={
                   <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                 }
+                ListFooterComponent={<View style={{ height: 12 }} />}
               />
             </View>
           </ScrollView>
         )}
       </View>
 
-      <View style={styles.tableSection}>
-        <View style={styles.tableHeaderBar}>
-          <View>
-            <Text style={styles.eyebrow}>Assignment Lifecycle</Text>
-            <Text style={styles.tableTitle}>Asset Section Transfer History</Text>
-          </View>
-
-          <View style={styles.tableActions}>
-            <View style={styles.syncPill}>
-              <View style={styles.syncDot} />
-              <Text style={styles.syncText}>{lifecycleLoading ? 'Loading' : 'Ready'}</Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.exportButton, isExportingLifecycle && styles.exportButtonDisabled]}
-              onPress={handleExportLifecycle}
-              disabled={isExportingLifecycle}
-              activeOpacity={0.85}
-            >
-              {isExportingLifecycle ? (
-                <ActivityIndicator size="small" color="#ffffff" />
-              ) : (
-                <Ionicons name="download-outline" size={15} color="#ffffff" />
-              )}
-              <Text style={styles.exportButtonText}>Export</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {lifecycleLoading ? (
-          <ActivityIndicator size="large" color={PRIMARY_BLUE} style={{ marginTop: 34 }} />
-        ) : lifecycle.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="time-outline" size={42} color="#94a3b8" />
-            <Text style={styles.emptyTitle}>No assignment history available</Text>
-          </View>
-        ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator
-            style={styles.tableScroll}
-          >
-            <View style={styles.table}>
-              <View style={[styles.tableRow, styles.tableHeaderRow]}>
-                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Asset Name</Text>
-                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Initial Section</Text>
-                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Current Section</Text>
-                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Assigned By</Text>
-                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Assignment Date</Text>
-                <Text style={[styles.cell, styles.headerCell]} numberOfLines={1}>Action</Text>
-              </View>
-
-              <FlatList
-                style={styles.assetList}
-                data={lifecycle}
-                keyExtractor={(item, index) => `${item._id}-${index}`}
-                renderItem={renderLifecycleRow}
-                initialNumToRender={18}
-                maxToRenderPerBatch={18}
-                windowSize={8}
-                removeClippedSubviews
-              />
-            </View>
-          </ScrollView>
-        )}
-      </View>
+      
 
       <Modal
         visible={Boolean(selectedAsset)}
@@ -1147,6 +947,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  exportButtonCompact: {
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: PRIMARY_BLUE,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   exportButtonDisabled: {
     opacity: 0.72,
   },
@@ -1170,18 +978,22 @@ const styles = StyleSheet.create({
   },
   table: {
     minWidth: 1200,
-    flex: 1,
+    // avoid forcing flex here; let the surrounding ScrollView determine sizing
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#dbe2ea',
-    overflow: 'hidden',
     backgroundColor: '#ffffff',
   },
   tableScroll: {
-    flex: 1,
+    // do not force flex on horizontal scroll; allow natural sizing
+    // flex: 1,
   },
   assetList: {
-    flex: 1,
+    // Fixed max height so FlatList becomes scrollable when content exceeds this
+    maxHeight: 420,
+  },
+  assetListContent: {
+    paddingBottom: 6,
   },
   tableHeaderRow: {
     backgroundColor: '#f8fafc',

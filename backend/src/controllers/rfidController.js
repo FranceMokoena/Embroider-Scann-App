@@ -109,6 +109,7 @@ const verifyRoom = async (req, res) => {
   try {
     const result = await assetService.verifyRoomInventory({
       location: req.body.location,
+      section: req.body.section,
       epcs: req.body.epcs,
       userId: req.userId,
     });

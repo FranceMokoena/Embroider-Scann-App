@@ -70,6 +70,11 @@ const mapAsset = asset => {
     status: asset.status || null,
     location: asset.location || null,
     category: asset.category || null,
+    department: asset.category || null,
+    section: asset.category || null,
+    verificationStatus: asset.verificationStatus || null,
+    verifiedAt: asset.verifiedAt || null,
+    verifiedBy: asset.verifiedBy ? String(asset.verifiedBy) : null,
   };
 };
 
