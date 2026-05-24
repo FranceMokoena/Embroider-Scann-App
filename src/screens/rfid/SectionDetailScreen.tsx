@@ -14,11 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { RouteProp, useRoute } from '@react-navigation/native';
-import { Alert, Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
-
-import { exportSectionsPdf } from '../../services/assetApi';
+import { Alert } from 'react-native';
 
 import {
   AssetRecord,
@@ -27,6 +23,7 @@ import {
   getAssetDisplayName,
   SectionSummary,
 } from '../../services/assetApi';
+import { exportSectionsToPdf } from '../../utils/assetPdfExport';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
 
 type SectionDetailRouteParams = {
@@ -151,17 +148,16 @@ export default function SectionDetailScreen({ navigation }: any) {
           <TouchableOpacity
             onPress={async () => {
               try {
-                const res = await exportSectionsPdf(sectionName);
-                const base64 = res.pdfBase64;
-                if (!base64) throw new Error('No PDF returned');
-
-                const filename = `${FileSystem.documentDirectory}section_${sectionName.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.pdf`;
-                await FileSystem.writeAsStringAsync(filename, base64, { encoding: FileSystem.EncodingType.Base64 });
-                if (Platform.OS === 'web') {
-                  Alert.alert('Export ready', 'PDF export is ready (web not supported for sharing)');
-                } else {
-                  await Sharing.shareAsync(filename);
+                if (!summary) {
+                  Alert.alert('Export failed', 'Section data is still loading');
+                  return;
                 }
+
+                await exportSectionsToPdf({
+                  title: `${sectionName} Export`,
+                  statusLabel: sectionName,
+                  sections: [summary],
+                });
               } catch (err: any) {
                 console.error('Export failed', err);
                 Alert.alert('Export failed', err?.message || 'Unable to export PDF');

@@ -1,5 +1,6 @@
 "use strict";
 
+const PDFDocument = require('pdfkit');
 const assetService = require('../services/assetService');
 
 const sendAssetError = (res, error, fallbackMessage) => {
@@ -185,7 +186,6 @@ const exportSectionsPdf = async (req, res) => {
       ? summary.filter(s => s.section === sectionFilter)
       : summary;
 
-    const PDFDocument = require('pdfkit');
     const doc = new PDFDocument({ size: 'A4', margin: 40 });
     const chunks = [];
 

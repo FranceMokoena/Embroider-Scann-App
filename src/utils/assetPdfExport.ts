@@ -2,7 +2,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
 import { ERP_COLORS, PRIMARY_BLUE } from '../theme/erpTheme';
-import type { AssetRecord } from '../services/assetApi';
+import type { AssetRecord, SectionSummary } from '../services/assetApi';
 import { getAssetDisplayName } from '../services/assetApi';
 
 type AssetPdfExportOptions = {
@@ -25,6 +25,12 @@ type LifecyclePdfExportOptions = {
   title: string;
   statusLabel: string;
   records: AssignmentLifecycleExportRecord[];
+};
+
+type SectionsPdfExportOptions = {
+  title: string;
+  statusLabel: string;
+  sections: SectionSummary[];
 };
 
 const escapeHtml = (value: unknown) =>
@@ -230,6 +236,54 @@ export const buildAssetExportHtml = ({
     `,
   });
 
+const buildSectionRows = (sections: SectionSummary[]) =>
+  sections
+    .map(
+      section => `
+        <tr>
+          <td>${escapeHtml(section.section)}</td>
+          <td>${escapeHtml(section.manager?.trim() || '—')}</td>
+          <td>${escapeHtml(formatDate(section.createdAt))}</td>
+          <td>${escapeHtml(section.totalAssets)}</td>
+          <td>${escapeHtml(section.healthyAssets)}</td>
+          <td>${escapeHtml(section.repairableAssets)}</td>
+          <td>${escapeHtml(section.beyondRepairAssets)}</td>
+        </tr>
+      `,
+    )
+    .join('');
+
+export const buildSectionsExportHtml = ({
+  title,
+  statusLabel,
+  sections,
+}: SectionsPdfExportOptions) =>
+  buildDocumentShell({
+    title,
+    statusLabel,
+    recordCount: sections.length,
+    heading: 'Sections Summary',
+    subtitle: 'EmbroideryTech - Organizational Sections Export',
+    table: `
+      <table>
+        <thead>
+          <tr>
+            <th>Section</th>
+            <th>Manager</th>
+            <th>Created</th>
+            <th>Total Assets</th>
+            <th>Healthy</th>
+            <th>Repairable</th>
+            <th>Beyond Repair</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${buildSectionRows(sections) || '<tr><td colspan="7">No sections included.</td></tr>'}
+        </tbody>
+      </table>
+    `,
+  });
+
 export const buildLifecycleExportHtml = ({
   title,
   statusLabel,
@@ -287,5 +341,11 @@ export const exportAssetsToPdf = async (options: AssetPdfExportOptions) =>
 export const exportLifecycleToPdf = async (options: LifecyclePdfExportOptions) =>
   sharePdf(
     buildLifecycleExportHtml(options),
+    `${options.title} - ${options.statusLabel}`,
+  );
+
+export const exportSectionsToPdf = async (options: SectionsPdfExportOptions) =>
+  sharePdf(
+    buildSectionsExportHtml(options),
     `${options.title} - ${options.statusLabel}`,
   );

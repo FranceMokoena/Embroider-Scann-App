@@ -14,11 +14,10 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Alert, Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
+import { Alert } from 'react-native';
 
-import { fetchSectionsSummary, createSection, SectionSummary, exportSectionsPdf } from '../../services/assetApi';
+import { fetchSectionsSummary, createSection, SectionSummary } from '../../services/assetApi';
+import { exportSectionsToPdf } from '../../utils/assetPdfExport';
 import { PRIMARY_BLUE } from '../../theme/erpTheme';
 
 const formatDateTime = (value?: string | null) => {
@@ -127,25 +126,12 @@ export default function SectionsScreen({ navigation }: any) {
           <TouchableOpacity
             onPress={async () => {
               try {
-                const res = await exportSectionsPdf();
-                const base64 = res.pdfBase64;
-                if (!base64) throw new Error('No PDF returned');
-
-                const filename = `${FileSystem.documentDirectory}sections_${Date.now()}.pdf`;
-                await FileSystem.writeAsStringAsync(filename, base64, { encoding: FileSystem.EncodingType.Base64 });
-
-                const dialogTitle = `Sections Export - ${new Date().toLocaleDateString()}`;
-
-                if (Platform.OS === 'web') {
-                  // open pdf in new tab for web
-                  (window as any).open(`data:application/pdf;base64,${base64}`, '_blank');
-                } else {
-                  await Sharing.shareAsync(filename, {
-                    mimeType: 'application/pdf',
-                    dialogTitle,
-                    UTI: 'com.adobe.pdf',
-                  });
-                }
+                const data = sections.length > 0 ? sections : await fetchSectionsSummary();
+                await exportSectionsToPdf({
+                  title: 'Sections Export',
+                  statusLabel: 'All Sections',
+                  sections: data,
+                });
               } catch (err: any) {
                 console.error('Export failed', err);
                 Alert.alert('Export failed', err?.message || 'Unable to export PDF');
