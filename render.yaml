@@ -1,0 +1,48 @@
+services:
+  - type: web
+    name: embroiderytech-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SECTION_RESOLVER_MODE
+        value: canonical
+      - key: LEGACY_BARCODE_MODE
+        value: read-only
+      - key: LEGACY_BARCODE_ALIAS_MODE
+        value: disabled
+
+  - type: web
+    name: embroiderytech-desktop
+    runtime: node
+    rootDir: desktop-backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DESKTOP_MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: MOBILE_API_URL
+        value: https://embroider-scann-app.onrender.com/api
+      - key: ASSET_UI_ENABLED
+        value: "true"
+      - key: DESKTOP_LEGACY_MODE
+        value: read-only
+      - key: DESKTOP_LEGACY_ALIAS_MODE
+        value: disabled
+      - key: ASSET_API_CREATE_INDEXES
+        value: "true"
+      - key: ALLOWED_ORIGINS
+        value: https://embroiderytech-desktop.onrender.com,https://embroider-scann-app.onrender.com

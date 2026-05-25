@@ -328,6 +328,11 @@ const metricCard = (label, value, note = '', className = '') => h('div', { class
   note ? h('div', { className: 'metric-note' }, note) : null,
 ]);
 const pill = value => h('span', { className: `pill ${statusClass(value)}` }, fmt(value));
+const assetApiWarning = message => h('div', { className: 'warning', role: 'alert' }, [
+  h('strong', {}, 'Asset data unavailable'),
+  h('p', {}, message),
+  h('p', { className: 'muted' }, 'This console does not fall back to barcode or Screen data. Check the desktop asset APIs and sync status.'),
+]);
 
 const table = (headers, rows, emptyText = 'No records found') => {
   if (!rows?.length) return h('div', { className: 'empty' }, emptyText);
@@ -339,7 +344,7 @@ const table = (headers, rows, emptyText = 'No records found') => {
 
 const renderDashboard = () => {
   if (state.loading.dashboard && !state.dashboard) return h('div', { className: 'loading' }, 'Loading asset dashboard...');
-  if (state.errors.dashboard) return h('div', { className: 'error' }, state.errors.dashboard);
+  if (state.errors.dashboard) return assetApiWarning(state.errors.dashboard);
   const dash = state.dashboard || {};
   const summary = dash.summary || {};
   const rfid = dash.rfidActivity || {};
@@ -383,7 +388,7 @@ const renderTechnicianCards = technicians => h('div', { className: 'grid summary
 const renderAssetTable = () => panel('Assets', h('div', { className: 'grid' }, [
   renderAssetFilters(),
   state.loading.assets ? h('div', { className: 'loading' }, 'Loading assets...') : null,
-  state.errors.assets ? h('div', { className: 'error' }, state.errors.assets) : null,
+  state.errors.assets ? assetApiWarning(state.errors.assets) : null,
   table(['Asset', 'Status', 'Section', 'Technician', 'Identifiers', 'Verification', 'Last Activity'], state.assets.map(asset =>
     h('tr', { onclick: () => loadAssetDetail(asset.assetId) }, [
       h('td', {}, [h('strong', {}, fmt(asset.assetName)), h('div', { className: 'muted' }, fmt(asset.assetNumber))]),
@@ -448,7 +453,7 @@ const renderDetail = () => {
       h('button', { className: 'button primary', onclick: () => loadAssetDetail(document.getElementById('assetIdInput').value) }, 'Load'),
     ])),
     state.loading.detail ? h('div', { className: 'loading' }, 'Loading asset detail...') : null,
-    state.errors.detail ? h('div', { className: 'error' }, state.errors.detail) : null,
+    state.errors.detail ? assetApiWarning(state.errors.detail) : null,
     detail ? renderAssetDetailPanels(detail) : h('div', { className: 'empty' }, 'Select an asset from the table or load by ID.'),
   ]);
 };
@@ -507,7 +512,7 @@ const renderHistoryView = (kind, title, path, renderRows) => panel(title, h('div
     } }, 'Apply'),
   ]),
   state.loading[kind] ? h('div', { className: 'loading' }, 'Loading...') : null,
-  state.errors[kind] ? h('div', { className: 'error' }, state.errors[kind]) : null,
+  state.errors[kind] ? assetApiWarning(state.errors[kind]) : null,
   renderRows(state.histories[kind]),
 ]));
 
@@ -550,7 +555,7 @@ const renderReports = () => panel('Asset Reports', h('div', { className: 'grid' 
     h('button', { className: 'button primary', onclick: () => loadReport(document.getElementById('reportType').value) }, 'Generate'),
   ]),
   state.loading.reports ? h('div', { className: 'loading' }, 'Generating report...') : null,
-  state.errors.reports ? h('div', { className: 'error' }, state.errors.reports) : null,
+  state.errors.reports ? assetApiWarning(state.errors.reports) : null,
   state.reports ? h('pre', { className: 'report-output' }, JSON.stringify(state.reports, null, 2)) : h('div', { className: 'empty' }, 'Choose a report type.'),
 ]));
 

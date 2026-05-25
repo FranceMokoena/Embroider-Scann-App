@@ -21,6 +21,21 @@ if (!MONGO_URI) {
 }
 
 const app = express();
+const legacyBarcodeAliasesEnabled = ['1', 'true', 'yes', 'on', 'enabled'].includes(
+  String(process.env.LEGACY_BARCODE_ALIAS_MODE || 'disabled').toLowerCase(),
+);
+
+const legacyBarcodeAliasMoved = legacyPath => (req, res) => {
+  res.setHeader('X-Migration-Path', legacyPath);
+  return res.status(410).json({
+    success: false,
+    error: 'Legacy barcode API alias is retired from the primary asset platform surface.',
+    legacyPath,
+    migrationPath: '/api/assets and /api/rfid',
+    compatibility:
+      'Use the /api/legacy/* path for read-only archive access, or set LEGACY_BARCODE_ALIAS_MODE=enabled for emergency rollback.',
+  });
+};
 
 const allowedOrigins = [
   'https://embroider-scann-app.onrender.com',
@@ -53,8 +68,15 @@ app.get('/', (_req, res) => {
 
 // Register routes
 app.use('/api/auth', authRoutes);
-app.use('/api/sessions', sessionsRoutes);
-app.use('/api/scan', scanRoutes);
+app.use('/api/legacy/sessions', sessionsRoutes);
+app.use('/api/legacy/scan', scanRoutes);
+if (legacyBarcodeAliasesEnabled) {
+  app.use('/api/sessions', sessionsRoutes);
+  app.use('/api/scan', scanRoutes);
+} else {
+  app.use('/api/sessions', legacyBarcodeAliasMoved('/api/legacy/sessions'));
+  app.use('/api/scan', legacyBarcodeAliasMoved('/api/legacy/scan'));
+}
 app.use('/api/assets', assetRoutes);
 app.use('/api/asset', assetRoutes);
 app.use('/api/rfid', rfidRoutes);

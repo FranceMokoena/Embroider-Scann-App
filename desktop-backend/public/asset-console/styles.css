@@ -312,6 +312,23 @@ tr:hover td {
   color: var(--danger);
 }
 
+.warning {
+  padding: 14px 16px;
+  color: #78350f;
+  background: #fffbeb;
+  border: 1px solid #f8d47a;
+  border-radius: 7px;
+}
+
+.warning strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.warning p {
+  margin: 4px 0;
+}
+
 .empty,
 .loading {
   padding: 18px;
