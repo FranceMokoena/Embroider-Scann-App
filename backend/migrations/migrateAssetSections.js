@@ -19,6 +19,8 @@ const run = async () => {
 
   const assets = await Asset.find({
     $or: [
+      { currentSection: { $exists: false } },
+      { currentSection: { $in: [null, ''] } },
       { section: { $exists: false } },
       { section: { $in: [null, ''] } },
       { category: { $exists: true, $nin: [null, ''] } },
@@ -29,8 +31,18 @@ const run = async () => {
   let migrated = 0;
 
   for (const asset of assets) {
+    const legacySectionSource = trimString(asset.currentSection)
+      ? 'currentSection'
+      : trimString(asset.section)
+        ? 'section'
+        : trimString(asset.category)
+          ? 'category'
+          : trimString(asset.location)
+            ? 'location'
+            : null;
     const section =
-      trimString(asset.section)
+      trimString(asset.currentSection)
+      || trimString(asset.section)
       || trimString(asset.category)
       || trimString(asset.location);
 
@@ -50,7 +62,13 @@ const run = async () => {
       : undefined;
 
     const update = {
-      $set: { section },
+      $set: {
+        currentSection: section,
+        section,
+        schemaVersion: 2,
+        'migrationMetadata.currentSectionBackfilledAt': new Date(),
+        'migrationMetadata.legacySectionSource': legacySectionSource,
+      },
       $unset: {
         category: '',
         location: '',

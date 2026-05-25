@@ -10,6 +10,9 @@ const { resolveAssetSection } = require('../utils/resolveAssetSection');
 const ASSIGNABLE_TAG_STATUSES = ['unassigned', 'assigned'];
 const VALID_MAPPING_STATUSES = ['assigned', 'unassigned', 'unknown'];
 const VALID_SCAN_SOURCES = ['deviceApi', 'broadcast', 'manual', 'unknown'];
+const DEFAULT_DUPLICATE_SUPPRESSION_WINDOW_MS = Number(
+  process.env.RFID_DUPLICATE_SUPPRESSION_WINDOW_MS || 1500,
+);
 
 const createServiceError = (message, statusCode) => {
   const error = new Error(message);
@@ -42,6 +45,73 @@ const normalizeOptionalString = value => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+const normalizeEventTimestamp = value => {
+  if (!value) {
+    return new Date();
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+};
+
+const normalizeDuplicateWindowMs = value => {
+  const raw = Number(value);
+  const fallback = Number.isFinite(DEFAULT_DUPLICATE_SUPPRESSION_WINDOW_MS)
+    ? DEFAULT_DUPLICATE_SUPPRESSION_WINDOW_MS
+    : 1500;
+  const windowMs = Number.isFinite(raw) ? raw : fallback;
+  return Math.max(0, Math.min(windowMs, 60000));
+};
+
+const findDuplicateScanLog = async ({
+  epcKey,
+  readerSessionId,
+  deviceId,
+  userId,
+  eventTimestamp,
+  duplicateWindowMs,
+}) => {
+  if (!duplicateWindowMs) {
+    return null;
+  }
+
+  const filter = {
+    epcKey,
+    timestamp: {
+      $gte: new Date(eventTimestamp.getTime() - duplicateWindowMs),
+      $lte: eventTimestamp,
+    },
+  };
+
+  if (readerSessionId) {
+    filter.readerSessionId = readerSessionId;
+  } else if (deviceId) {
+    filter.deviceId = deviceId;
+  } else if (userId) {
+    filter.userId = userId;
+  } else {
+    return null;
+  }
+
+  return TagScanLog.findOne(filter).sort({ timestamp: -1 });
+};
+
+const mapScanLog = (log, extra = {}) => ({
+  id: log._id,
+  epcRaw: log.epcRaw,
+  epcKey: log.epcKey,
+  mappingStatus: log.mappingStatus,
+  duplicateSuppressed: log.duplicateSuppressed,
+  suppressionReason: log.suppressionReason || null,
+  idempotencyKey: log.idempotencyKey || null,
+  readerSessionId: log.readerSessionId || null,
+  deviceId: log.deviceId || null,
+  readTimestamp: log.readTimestamp || null,
+  serverReceivedAt: log.serverReceivedAt || null,
+  timestamp: log.timestamp,
+  ...extra,
+});
+
 const getAssetSection = asset => resolveAssetSection(asset);
 
 const withSession = (query, session) => (session ? query.session(session) : query);
@@ -64,6 +134,7 @@ const mapAsset = asset => {
   if (!asset) {
     return null;
   }
+  const currentSection = getAssetSection(asset) || null;
 
   return {
     id: asset._id,
@@ -71,7 +142,8 @@ const mapAsset = asset => {
     assetNumber: asset.assetNumber,
     serialNumber: asset.serialNumber || null,
     status: asset.status || null,
-    section: getAssetSection(asset) || null,
+    currentSection,
+    section: currentSection,
     verificationStatus: asset.verificationStatus || null,
     verifiedAt: asset.verifiedAt || null,
     verifiedBy: asset.verifiedBy ? String(asset.verifiedBy) : null,
@@ -323,42 +395,90 @@ const assignTagToAsset = async payload => {
 const writeScanLog = async ({
   epcRaw,
   deviceId,
+  readerSessionId,
+  idempotencyKey,
   source,
   screen,
   mappingStatus,
   duplicateSuppressed,
+  timestamp,
+  readTimestamp,
+  duplicateWindowMs,
   userId,
 }) => {
   const { epcRaw: raw, epcKey } = getEpcInput(epcRaw);
+  const normalizedIdempotencyKey = normalizeOptionalString(idempotencyKey);
+  if (normalizedIdempotencyKey) {
+    const existingLog = await TagScanLog.findOne({ idempotencyKey: normalizedIdempotencyKey });
+    if (existingLog) {
+      return mapScanLog(existingLog, {
+        idempotentReplay: true,
+        serverDuplicateSuppressed: false,
+      });
+    }
+  }
+
+  const eventTimestamp = normalizeEventTimestamp(readTimestamp || timestamp);
+  const serverReceivedAt = new Date();
+  const normalizedDeviceId = normalizeOptionalString(deviceId);
+  const normalizedReaderSessionId = normalizeOptionalString(readerSessionId);
+  const resolvedDuplicateWindowMs = normalizeDuplicateWindowMs(duplicateWindowMs);
+  const duplicateLog = await findDuplicateScanLog({
+    epcKey,
+    readerSessionId: normalizedReaderSessionId,
+    deviceId: normalizedDeviceId,
+    userId,
+    eventTimestamp,
+    duplicateWindowMs: resolvedDuplicateWindowMs,
+  });
+  const serverDuplicateSuppressed = Boolean(duplicateLog);
   const resolved = await resolveEpc(raw);
   const resolvedStatus = VALID_MAPPING_STATUSES.includes(mappingStatus)
     ? mappingStatus
     : resolved.status;
 
-  const log = await TagScanLog.create({
-    epcRaw: raw,
-    epcKey,
-    rfidTagId: resolved.tag?.id,
-    assetId: resolved.asset?.id,
-    deviceId: normalizeOptionalString(deviceId),
-    source: VALID_SCAN_SOURCES.includes(source) ? source : 'unknown',
-    screen: normalizeOptionalString(screen),
-    mappingStatus: VALID_MAPPING_STATUSES.includes(resolvedStatus)
-      ? resolvedStatus
-      : 'unknown',
-    duplicateSuppressed: Boolean(duplicateSuppressed),
-    userId,
-    timestamp: new Date(),
-  });
+  try {
+    const log = await TagScanLog.create({
+      epcRaw: raw,
+      epcKey,
+      rfidTagId: resolved.tag?.id,
+      assetId: resolved.asset?.id,
+      deviceId: normalizedDeviceId,
+      readerSessionId: normalizedReaderSessionId,
+      source: VALID_SCAN_SOURCES.includes(source) ? source : 'unknown',
+      screen: normalizeOptionalString(screen),
+      mappingStatus: VALID_MAPPING_STATUSES.includes(resolvedStatus)
+        ? resolvedStatus
+        : 'unknown',
+      duplicateSuppressed: Boolean(duplicateSuppressed) || serverDuplicateSuppressed,
+      suppressionReason: serverDuplicateSuppressed
+        ? 'server_duplicate_window'
+        : (duplicateSuppressed ? 'client_duplicate' : undefined),
+      idempotencyKey: normalizedIdempotencyKey,
+      userId,
+      readTimestamp: eventTimestamp,
+      serverReceivedAt,
+      timestamp: eventTimestamp,
+    });
 
-  return {
-    id: log._id,
-    epcRaw: log.epcRaw,
-    epcKey: log.epcKey,
-    mappingStatus: log.mappingStatus,
-    duplicateSuppressed: log.duplicateSuppressed,
-    timestamp: log.timestamp,
-  };
+    return mapScanLog(log, {
+      idempotentReplay: false,
+      serverDuplicateSuppressed,
+      duplicateWindowMs: resolvedDuplicateWindowMs,
+    });
+  } catch (error) {
+    if (isDuplicateKeyError(error) && normalizedIdempotencyKey) {
+      const existingLog = await TagScanLog.findOne({ idempotencyKey: normalizedIdempotencyKey });
+      if (existingLog) {
+        return mapScanLog(existingLog, {
+          idempotentReplay: true,
+          serverDuplicateSuppressed: false,
+        });
+      }
+    }
+
+    throw error;
+  }
 };
 
 module.exports = {

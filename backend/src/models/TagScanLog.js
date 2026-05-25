@@ -30,6 +30,12 @@ const tagScanLogSchema = new mongoose.Schema({
   deviceId: {
     type: String,
     default: undefined,
+    index: true,
+  },
+  readerSessionId: {
+    type: String,
+    default: undefined,
+    index: true,
   },
   source: {
     type: String,
@@ -50,10 +56,30 @@ const tagScanLogSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  suppressionReason: {
+    type: String,
+    default: undefined,
+  },
+  idempotencyKey: {
+    type: String,
+    default: undefined,
+    unique: true,
+    sparse: true,
+    index: true,
+  },
   userId: {
     type: String,
     default: undefined,
     index: true,
+  },
+  readTimestamp: {
+    type: Date,
+    default: undefined,
+    index: true,
+  },
+  serverReceivedAt: {
+    type: Date,
+    default: () => new Date(),
   },
   timestamp: {
     type: Date,
@@ -61,5 +87,8 @@ const tagScanLogSchema = new mongoose.Schema({
     index: true,
   },
 }, { timestamps: true });
+
+tagScanLogSchema.index({ epcKey: 1, readerSessionId: 1, timestamp: -1 });
+tagScanLogSchema.index({ epcKey: 1, deviceId: 1, timestamp: -1 });
 
 module.exports = mongoose.model('TagScanLog', tagScanLogSchema);

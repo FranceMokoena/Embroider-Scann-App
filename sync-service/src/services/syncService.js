@@ -6,15 +6,22 @@ const {
   Statistics, 
   SyncLog 
 } = require('../models/desktopModels');
+const AssetSyncService = require('./assetSync/assetSyncService');
 const moment = require('moment');
+const {
+  getLegacyScreenSyncMode,
+  shouldSyncLegacyScreens,
+} = require('../config/migrationFlags');
 
 class SyncService {
   constructor() {
+    this.assetSyncService = new AssetSyncService();
     this.syncStats = {
       users: { created: 0, updated: 0, errors: 0 },
       sessions: { created: 0, updated: 0, errors: 0 },
       screens: { created: 0, updated: 0, errors: 0 },
-      statistics: { created: 0, updated: 0, errors: 0 }
+      statistics: { created: 0, updated: 0, errors: 0 },
+      assetSync: null
     };
   }
 
@@ -24,11 +31,17 @@ class SyncService {
     
     try {
       this.resetSyncStats();
-      await this.syncUsers();
-      await this.syncSessions();
-      await this.syncScreens();
-      await this.updateStatistics();
-      await this.logSyncOperation('full_sync', 'success', startTime);
+      if (shouldSyncLegacyScreens()) {
+        await this.syncUsers();
+        await this.syncSessions();
+        await this.syncScreens();
+        await this.updateStatistics();
+      } else {
+        console.log(`Legacy Screen sync skipped; LEGACY_SCREEN_SYNC_MODE=${getLegacyScreenSyncMode()}`);
+      }
+      const assetSyncError = await this.syncAssetReadModels();
+      const status = assetSyncError ? 'partial' : 'success';
+      await this.logSyncOperation('full_sync', status, startTime, assetSyncError?.message || null);
       
       console.log('✅ Full sync completed successfully');
       this.printSyncStats();
@@ -45,7 +58,8 @@ class SyncService {
       users: { created: 0, updated: 0, errors: 0 },
       sessions: { created: 0, updated: 0, errors: 0 },
       screens: { created: 0, updated: 0, errors: 0 },
-      statistics: { created: 0, updated: 0, errors: 0 }
+      statistics: { created: 0, updated: 0, errors: 0 },
+      assetSync: null
     };
   }
 
@@ -55,7 +69,33 @@ class SyncService {
     console.log('📋 Sessions:', this.syncStats.sessions);
     console.log('📱 Screens:', this.syncStats.screens);
     console.log('📊 Statistics:', this.syncStats.statistics);
+    console.log('Assets:', this.syncStats.assetSync || { status: 'not_run' });
     console.log('');
+  }
+
+  async syncAssetReadModels() {
+    const startedAt = Date.now();
+    console.log('Starting asset-centric read-model sync...');
+
+    try {
+      const stats = await this.assetSyncService.performAssetSync();
+      this.syncStats.assetSync = {
+        status: 'success',
+        duration: Date.now() - startedAt,
+        ...stats
+      };
+      await this.logSyncOperation('asset_sync', 'success', startedAt, null, stats);
+      return null;
+    } catch (error) {
+      console.error('Asset-centric read-model sync failed:', error);
+      this.syncStats.assetSync = {
+        status: 'error',
+        duration: Date.now() - startedAt,
+        error: error.message
+      };
+      await this.logSyncOperation('asset_sync', 'error', startedAt, error.message);
+      return error;
+    }
   }
 
   // Sync users from mobile to desktop
@@ -327,21 +367,42 @@ class SyncService {
   }
 
   // Log sync operation
-  async logSyncOperation(operation, status, startTime, errorMessage = null) {
+  async logSyncOperation(operation, status, startTime, errorMessage = null, metrics = null) {
     const duration = Date.now() - startTime;
-    const totalProcessed = 
-      this.syncStats.users.created + this.syncStats.users.updated +
-      this.syncStats.sessions.created + this.syncStats.sessions.updated +
-      this.syncStats.screens.created + this.syncStats.screens.updated +
-      this.syncStats.statistics.created + this.syncStats.statistics.updated;
+    const legacyStats = ['users', 'sessions', 'screens', 'statistics'];
+    const assetStats = this.syncStats.assetSync || {};
+    const assetCategories = [
+      'assets',
+      'identifiers',
+      'assetHistory',
+      'assetVerification',
+      'assetTransfers',
+      'rfidEvents',
+      'sections'
+    ];
+    const totalProcessed = legacyStats.reduce(
+      (total, category) => total + this.syncStats[category].created + this.syncStats[category].updated,
+      0
+    ) + assetCategories.reduce(
+      (total, category) => total + (assetStats[category]?.created || 0) + (assetStats[category]?.updated || 0),
+      0
+    );
     
-    const totalCreated = 
-      this.syncStats.users.created + this.syncStats.sessions.created + 
-      this.syncStats.screens.created + this.syncStats.statistics.created;
+    const totalCreated = legacyStats.reduce(
+      (total, category) => total + this.syncStats[category].created,
+      0
+    ) + assetCategories.reduce(
+      (total, category) => total + (assetStats[category]?.created || 0),
+      0
+    );
     
-    const totalUpdated = 
-      this.syncStats.users.updated + this.syncStats.sessions.updated + 
-      this.syncStats.screens.updated + this.syncStats.statistics.updated;
+    const totalUpdated = legacyStats.reduce(
+      (total, category) => total + this.syncStats[category].updated,
+      0
+    ) + assetCategories.reduce(
+      (total, category) => total + (assetStats[category]?.updated || 0),
+      0
+    );
     
     await SyncLog.create({
       operation: operation,
@@ -352,6 +413,15 @@ class SyncService {
       recordsDeleted: 0,
       errorMessage: errorMessage,
       duration: duration,
+      metrics: metrics || {
+        legacy: {
+          users: this.syncStats.users,
+          sessions: this.syncStats.sessions,
+          screens: this.syncStats.screens,
+          statistics: this.syncStats.statistics
+        },
+        assetSync: this.syncStats.assetSync
+      },
       timestamp: new Date()
     });
   }

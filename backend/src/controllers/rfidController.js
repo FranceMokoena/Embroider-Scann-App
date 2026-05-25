@@ -80,10 +80,15 @@ const writeScanLog = async (req, res) => {
     const log = await rfidService.writeScanLog({
       epcRaw: req.body.epcRaw,
       deviceId: req.body.deviceId,
+      readerSessionId: req.body.readerSessionId,
+      idempotencyKey: req.body.idempotencyKey,
       source: req.body.source,
       screen: req.body.screen,
       mappingStatus: req.body.mappingStatus,
       duplicateSuppressed: req.body.duplicateSuppressed,
+      timestamp: req.body.timestamp,
+      readTimestamp: req.body.readTimestamp,
+      duplicateWindowMs: req.body.duplicateWindowMs,
       userId: req.userId,
     });
 
@@ -108,7 +113,6 @@ const getLiveTags = async (_req, res) => {
 const verifyRoom = async (req, res) => {
   try {
     const result = await assetService.verifyRoomInventory({
-      location: req.body.location,
       section: req.body.section,
       epcs: req.body.epcs,
       userId: req.userId,

@@ -1,0 +1,205 @@
+RFID Asset Canonical Migration
+==============================
+
+Investigation Summary
+---------------------
+The repository still contains three distinct operational paths:
+
+1. Legacy mobile barcode path
+   - backend/src/routes/scan.js
+   - backend/src/controllers/scanController.js
+   - backend/src/models/Screen.js
+   - backend/src/models/ProductionScreen.js
+   - backend/src/models/RepairScreen.js
+   - backend/src/models/WriteOffScreen.js
+   - backend/src/routes/sessions.js
+   - backend/src/controllers/sessionController.js
+   - backend/src/models/TaskSession.js
+
+2. Legacy desktop proxy path
+   - desktop-backend/src/routes/admin.js
+   - desktop-backend/src/controllers/adminController.js
+   - desktop-backend/src/services/mobileApiService.js
+   - desktop-backend/src/routes/reports.js
+   - desktop-backend/src/controllers/reportsController.js
+
+3. RFID asset path
+   - backend/src/models/Asset.js
+   - backend/src/models/RFIDTag.js
+   - backend/src/models/AssetTagMapping.js
+   - backend/src/models/TagScanLog.js
+   - backend/src/routes/assets.js
+   - backend/src/routes/rfid.js
+   - backend/src/services/assetService.js
+   - backend/src/services/rfidService.js
+   - backend/src/services/assetTransferService.js
+   - sync-service/src/services/assetSync/*
+   - desktop-backend/src/routes/assets.js
+   - desktop-backend/src/services/assets/*
+   - desktop-backend/public/asset-console/*
+
+Legacy Conflicts
+----------------
+The legacy barcode path mutates Screen, TaskSession, ProductionScreen, RepairScreen, and WriteOffScreen records. Those records are department-based and use Reparable status terminology.
+
+The RFID asset path mutates Asset, RFIDTag, AssetTagMapping, TagScanLog, section lifecycle history, verification history, and transfer history. Those records are asset-centric and use Repairable status terminology.
+
+The main conflict risk is not direct collection mutation, but competing operational truth:
+
+- legacy Screen reports can claim lifecycle state from barcode scans
+- legacy department filters can disagree with RFID section assignment
+- legacy desktop admin proxies can still update mobile barcode records
+- old sync can continue writing DesktopScreen while the asset console reads DesktopAsset
+
+Canonical Source Of Truth
+-------------------------
+The canonical asset domain is now:
+
+- Asset
+- RFIDTag
+- AssetTagMapping
+- TagScanLog
+- Section
+- Asset assignmentLifecycleHistory
+- Asset verificationHistory
+- Asset statusHistory
+
+The canonical section field is currentSection.
+
+The legacy section field remains as a compatibility mirror so existing documents can be migrated safely. category, department, and location are not used as authoritative section fields by the asset verification path.
+
+Implemented Isolation
+---------------------
+Backend barcode endpoints now have LEGACY_BARCODE_MODE:
+
+- read-write: legacy barcode routes continue to work
+- read-only: GET routes work, write methods are blocked
+- disabled: all legacy barcode routes are blocked
+
+Guarded routes:
+
+- /api/scan/*
+- /api/sessions/*
+
+Desktop legacy routes now have DESKTOP_LEGACY_MODE:
+
+- read-only is the default
+- read-write can be enabled for rollback
+- disabled fully blocks compatibility routes
+
+Guarded routes:
+
+- /api/admin/*
+- /api/reports/*
+- /api/messaging/*
+- /api/legacy/admin/*
+- /api/legacy/reports/*
+- /api/legacy/messaging/*
+
+RFID Desktop Routing
+--------------------
+The asset console uses only:
+
+- /api/features
+- /api/assets/*
+
+The visible desktop asset console no longer exposes a legacy coexistence screen or barcode route links.
+
+Section Standardization
+-----------------------
+Backend Asset now has:
+
+- currentSection
+- section as compatibility mirror
+- schemaVersion
+- migrationMetadata
+
+New writes mirror currentSection and section. Transfers update currentSection and section together. Verification compares against currentSection semantics through resolveAssetSection.
+
+Run this migration before strict rollout:
+
+- backend/migrations/migrateAssetSections.js
+
+Use SECTION_RESOLVER_MODE to control transition:
+
+- canonical: currentSection -> section
+- strict: currentSection only
+- legacy: currentSection -> section -> category -> location
+
+Verification Persistence
+------------------------
+/api/rfid/verify-room now persists verification state for:
+
+- matched assets: verificationStatus = Verified
+- missing assets: verificationStatus = Missing
+- unexpected assets: verificationStatus = Section Mismatch
+
+Each updated asset receives a verificationHistory entry with:
+
+- section
+- currentSection
+- expectedSection
+- scannedSection
+- result
+- auditId
+- epc
+- source
+- verifiedAt
+- verifiedBy
+
+The response includes updatedAssetIds so clients can invalidate local caches and refresh asset views.
+
+Synchronization Safety
+----------------------
+sync-service now projects currentSection into DesktopAsset and can mark source-deleted assets:
+
+- DesktopAsset.sourceDeleted
+- DesktopAsset.deletedAtSource
+
+Default desktop asset APIs hide sourceDeleted assets. Identifier resolution ignores deleted source assets.
+
+Deletion marking has a safety gate:
+
+- SYNC_MARK_DELETED_ASSETS=false disables deletion marking
+- SYNC_ALLOW_EMPTY_SOURCE_DELETION=true is required before an empty source Asset set can mark every desktop asset deleted
+
+LEGACY_SCREEN_SYNC_MODE controls old Screen sync:
+
+- enabled: legacy Screen/User/TaskSession/Statistics sync continues
+- disabled: only asset sync runs
+
+Production Rollout
+------------------
+Recommended staged rollout:
+
+1. Deploy with LEGACY_BARCODE_MODE=read-write and DESKTOP_LEGACY_MODE=read-only.
+2. Run backend/migrations/migrateAssetSections.js.
+3. Confirm Asset.currentSection coverage is complete.
+4. Run sync-service and validate DesktopAsset.currentSection coverage.
+5. Switch SECTION_RESOLVER_MODE=canonical.
+6. Switch LEGACY_SCREEN_SYNC_MODE=disabled once desktop reports use /api/assets/reports/:type.
+7. Switch LEGACY_BARCODE_MODE=read-only when mobile barcode workflows are officially frozen.
+8. Later switch DESKTOP_LEGACY_MODE=disabled after archived reports are exported.
+
+Rollback
+--------
+No legacy collections are deleted. Rollback is environment-driven:
+
+- DESKTOP_LEGACY_MODE=read-write restores desktop legacy write compatibility.
+- LEGACY_BARCODE_MODE=read-write restores backend barcode writes.
+- SECTION_RESOLVER_MODE=legacy restores category/location read compatibility during data cleanup.
+- LEGACY_SCREEN_SYNC_MODE=enabled restores Screen sync.
+
+Known Remaining Legacy Surfaces
+-------------------------------
+These files remain by design for compatibility and archival access:
+
+- backend/src/controllers/scanController.js
+- backend/src/controllers/sessionController.js
+- backend/src/models/Screen.js
+- backend/src/models/TaskSession.js
+- desktop-backend/src/controllers/adminController.js
+- desktop-backend/src/services/mobileApiService.js
+- sync-service/src/services/syncService.js legacy lane
+
+They are no longer part of the new RFID desktop console contract.

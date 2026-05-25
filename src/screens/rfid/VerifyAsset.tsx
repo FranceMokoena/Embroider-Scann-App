@@ -206,7 +206,7 @@ export default function VerifyAsset({ navigation }: any) {
   };
 
   const getAssetSection = (asset: any) =>
-    String(asset?.section || '').trim();
+    String(asset?.currentSection || asset?.section || '').trim();
 
   const getContextualVerificationLabel = (asset: AssetRecord) =>
     getVerificationContext(asset).label;
@@ -284,7 +284,7 @@ export default function VerifyAsset({ navigation }: any) {
 
     try {
       const assetsResponse = await apiRequest<{ assets: any[] }>(
-        `/api/assets?section=${encodeURIComponent(normalizedSection)}`,
+        `/api/assets?currentSection=${encodeURIComponent(normalizedSection)}`,
         { method: 'GET' },
       );
 
@@ -358,7 +358,7 @@ export default function VerifyAsset({ navigation }: any) {
       setAuditAssets([]);
 
       const assetsResponse = await apiRequest<{ assets: any[] }>(
-        `/api/assets?section=${encodeURIComponent(normalizedSection)}`,
+        `/api/assets?currentSection=${encodeURIComponent(normalizedSection)}`,
         { method: 'GET' },
       );
 
@@ -458,21 +458,17 @@ export default function VerifyAsset({ navigation }: any) {
         method: 'POST',
         body: {
           section: normalizedSection,
-          location: normalizedSection,
           epcs: uniqueEpcs,
         },
       });
 
       setAuditResult(result.audit);
-      if (Array.isArray(result.audit?.matchedAssets)) {
-        result.audit.matchedAssets.forEach((asset: any) => {
-          if (asset?.id) {
-            notifyAssetUpdated(asset.id);
-          }
-        });
-        if (result.audit.matchedAssets.length > 0) {
-          notifyAssetUpdated();
-        }
+      const updatedAssetIds = Array.isArray(result.audit?.updatedAssetIds)
+        ? result.audit.updatedAssetIds
+        : [];
+      if (updatedAssetIds.length > 0) {
+        updatedAssetIds.forEach((assetId: string) => notifyAssetUpdated(assetId));
+        notifyAssetUpdated();
       }
       const matchedAssets = result.audit.matchedAssets || [];
       const missingAssets = result.audit.missingAssets || [];

@@ -1,0 +1,123 @@
+Desktop Asset API Phase 2
+=========================
+
+Purpose
+-------
+This phase adds the desktop asset read/API layer. It allows the desktop platform to begin consuming synchronized asset projections without changing or deleting legacy barcode admin flows.
+
+Architecture
+------------
+The desktop backend now has an additive asset API boundary:
+
+- Route layer: /api/assets
+- Controller layer: assetsController
+- Service layer: asset read, dashboard, history, identifier resolution, reporting, observability
+- Model layer: DesktopAsset, DesktopAssetIdentifier, DesktopAssetHistory, DesktopAssetVerification, DesktopAssetTransfer, DesktopRFIDEvent, DesktopSection
+
+The API reads from the Phase 1 desktop read models. It does not read legacy Screen collections for asset endpoints.
+
+API Contracts
+-------------
+The following endpoints are available behind the existing desktop admin authentication:
+
+- GET /api/assets
+- GET /api/assets/:id
+- GET /api/assets/summary
+- GET /api/assets/dashboard
+- GET /api/assets/statistics
+- GET /api/assets/history
+- GET /api/assets/transfers
+- GET /api/assets/verifications
+- GET /api/assets/rfid-activity
+- GET /api/assets/technicians
+- GET /api/assets/sections
+- GET /api/assets/resolve?type=RFID&value=...
+- GET /api/assets/resolve/:type/:value
+- GET /api/assets/reports/:type
+
+Dashboard Aggregation Strategy
+------------------------------
+Dashboard data is produced by service-layer aggregations, not controllers. The dashboard service calculates:
+
+- total assets
+- status counts
+- section summaries
+- technician summaries
+- verification counts
+- transfer counts
+- RFID activity metrics
+- unresolved identifier counts
+- recently updated assets
+- recently scanned RFID events
+
+Reporting Projection Strategy
+-----------------------------
+Asset reports are JSON projection APIs for future desktop UI and export layers. Supported report types include:
+
+- dashboard
+- snapshot
+- lifecycle
+- sections
+- technicians
+- transfers
+- verifications
+- rfid_operational
+- unresolved_identifiers
+- movement
+
+Identifier Lookup Architecture
+------------------------------
+Identifier resolution is generic. API callers provide an identifier type and value. Supported types are:
+
+- RFID
+- EPC
+- BARCODE
+- QR
+- NFC
+
+Lookups use DesktopAssetIdentifier.type and DesktopAssetIdentifier.valueNormalized. EPC is not hardcoded as the only lookup path.
+
+Pagination and Filtering
+------------------------
+List and history endpoints support pagination with page and limit. Limits are capped at 200 records per request.
+
+Common filters include:
+
+- status
+- section
+- technician
+- assetId
+- date ranges using from/to or startDate/endDate
+- type/historyType
+- transferType
+- result
+- mappingStatus
+- deviceId
+- readerSessionId
+
+Observability
+-------------
+Every asset API request logs structured timing data. Slow requests use the asset_api_slow_query event. Responses include X-Asset-API-Duration-Ms.
+
+Backward Compatibility
+----------------------
+The following remain unchanged:
+
+- /api/admin legacy routes
+- /api/reports legacy routes
+- barcode Screen synchronization
+- DesktopScreen read model
+- existing desktop admin authentication
+
+The asset APIs run in parallel with the legacy desktop behavior.
+
+Future UI Migration
+-------------------
+Future desktop screens should consume these projection APIs instead of raw sync collections. Suggested migration order:
+
+1. Asset dashboard from /api/assets/dashboard
+2. Asset table from /api/assets
+3. Asset detail from /api/assets/:id
+4. Section cards from /api/assets/sections
+5. Technician cards from /api/assets/technicians
+6. Lifecycle, transfer, verification, and RFID reports from /api/assets/reports/:type

@@ -249,6 +249,7 @@ const transferAssets = async ({
         toSection: canonicalToSection,
       });
 
+      asset.currentSection = canonicalToSection;
       asset.section = canonicalToSection;
       asset.category = undefined;
       asset.location = undefined;

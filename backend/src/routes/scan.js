@@ -3,8 +3,11 @@
 const express = require('express');
 const { addScan, getUserScans, getAllScans, notifyScreenAction, deleteScreens, getProductionScreens, getRepairScreens, getWriteOffScreens } = require('../controllers/scanController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { legacyBarcodeGuard } = require('../middleware/legacyBarcodeGuard');
 
 const router = express.Router();
+
+router.use(legacyBarcodeGuard);
 
 router.post('/', requireAuth, addScan);
 router.get('/history', requireAuth, getUserScans);          // mobile (per user)

@@ -65,7 +65,7 @@ const getLatestEntry = (
   ).entry;
 
 export const getAssetCurrentSection = (asset?: AssetRecord | null) =>
-  normalizeText(asset?.section);
+  normalizeText(asset?.currentSection || asset?.section);
 
 export const getLatestVerificationEntry = (asset?: AssetRecord | null) =>
   getLatestEntry(asset?.verificationHistory || [], () => true);

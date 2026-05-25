@@ -34,11 +34,9 @@ const buildSectionFilter = section => {
   const normalizedSection = trimString(section);
   return {
     $or: [
-      { section: normalizedSection },
-      { section: { $exists: false }, category: normalizedSection },
-      { section: { $in: [null, ''] }, category: normalizedSection },
-      { section: { $exists: false }, category: { $exists: false }, location: normalizedSection },
-      { section: { $in: [null, ''] }, category: { $in: [null, ''] }, location: normalizedSection },
+      { currentSection: normalizedSection },
+      { currentSection: { $exists: false }, section: normalizedSection },
+      { currentSection: { $in: [null, ''] }, section: normalizedSection },
     ],
   };
 };
@@ -59,39 +57,45 @@ const getAssignedByDisplayName = assignedBy => {
   return String(assignedBy._id || assignedBy);
 };
 
-const mapAssetResponse = asset => ({
-  id: asset._id,
-  assetName: asset.assetName,
-  assetNumber: asset.assetNumber,
-  serialNumber: asset.serialNumber || null,
-  epc: asset.epc,
-  section: getAssetSection(asset) || null,
-  status: asset.status || null,
-  assignedTo: asset.assignedTo || null,
-  assignmentInformation: asset.assignmentInformation ? {
-    ...asset.assignmentInformation,
-    assignedBy: getAssignedByDisplayName(asset.assignmentInformation.assignedBy),
-  } : null,
-  verificationStatus: asset.verificationStatus || null,
-  verifiedAt: asset.verifiedAt || null,
-  verifiedBy: getAssignedByDisplayName(asset.verifiedBy),
-  updatedBy: getAssignedByDisplayName(asset.updatedBy),
-  statusHistory: Array.isArray(asset.statusHistory)
-    ? asset.statusHistory.map(entry => ({
-      previousStatus: entry.previousStatus || null,
-      newStatus: entry.newStatus || null,
-      changedAt: entry.changedAt,
-      changedBy: getAssignedByDisplayName(entry.changedBy),
-      source: entry.source || null,
-      reason: entry.reason || null,
-      batchId: entry.batchId || null,
-    }))
-    : [],
-  assignmentLifecycleHistory: asset.assignmentLifecycleHistory || [],
-  verificationHistory: asset.verificationHistory || [],
-  createdAt: asset.createdAt,
-  updatedAt: asset.updatedAt,
-});
+const mapAssetResponse = asset => {
+  const currentSection = getAssetSection(asset) || null;
+
+  return {
+    id: asset._id,
+    assetName: asset.assetName,
+    assetNumber: asset.assetNumber,
+    serialNumber: asset.serialNumber || null,
+    epc: asset.epc,
+    currentSection,
+    section: currentSection,
+    status: asset.status || null,
+    assignedTo: asset.assignedTo || null,
+    assignmentInformation: asset.assignmentInformation ? {
+      ...asset.assignmentInformation,
+      assignedBy: getAssignedByDisplayName(asset.assignmentInformation.assignedBy),
+    } : null,
+    verificationStatus: asset.verificationStatus || null,
+    verifiedAt: asset.verifiedAt || null,
+    verifiedBy: getAssignedByDisplayName(asset.verifiedBy),
+    updatedBy: getAssignedByDisplayName(asset.updatedBy),
+    statusHistory: Array.isArray(asset.statusHistory)
+      ? asset.statusHistory.map(entry => ({
+        previousStatus: entry.previousStatus || null,
+        newStatus: entry.newStatus || null,
+        changedAt: entry.changedAt,
+        changedBy: getAssignedByDisplayName(entry.changedBy),
+        source: entry.source || null,
+        reason: entry.reason || null,
+        batchId: entry.batchId || null,
+      }))
+      : [],
+    assignmentLifecycleHistory: asset.assignmentLifecycleHistory || [],
+    verificationHistory: asset.verificationHistory || [],
+    schemaVersion: asset.schemaVersion || 1,
+    createdAt: asset.createdAt,
+    updatedAt: asset.updatedAt,
+  };
+};
 
 const validateCreateAssetInput = payload => {
   const assetName = trimString(payload.assetName);
@@ -124,10 +128,12 @@ const validateCreateAssetInput = payload => {
     assetNumber,
     serialNumber: normalizeOptionalString(payload.serialNumber),
     epc,
-    section: normalizeOptionalString(payload.section)
-      || normalizeOptionalString(payload.department)
-      || normalizeOptionalString(payload.category)
-      || normalizeOptionalString(payload.location),
+    currentSection: normalizeOptionalString(payload.currentSection)
+      || normalizeOptionalString(payload.section)
+      || normalizeOptionalString(payload.department),
+    section: normalizeOptionalString(payload.currentSection)
+      || normalizeOptionalString(payload.section)
+      || normalizeOptionalString(payload.department),
     status,
     assignedTo: normalizeOptionalString(payload.assignedTo),
     assignmentInformation: payload.userId
@@ -252,10 +258,10 @@ const buildAssetFilter = filters => {
     query.status = filters.status;
   }
 
-  if (filters.section || filters.department || filters.category || filters.location) {
+  if (filters.currentSection || filters.section || filters.department) {
     Object.assign(
       query,
-      buildSectionFilter(filters.section || filters.department || filters.category || filters.location),
+      buildSectionFilter(filters.currentSection || filters.section || filters.department),
     );
   }
 
@@ -284,7 +290,9 @@ const updateAsset = async (assetId, payload = {}) => {
     throw createServiceError('Invalid asset id', 400);
   }
 
-  const requestedSection = payload.section !== undefined ? payload.section : payload.department;
+  const requestedSection = payload.currentSection !== undefined
+    ? payload.currentSection
+    : (payload.section !== undefined ? payload.section : payload.department);
   const hasSectionUpdate = requestedSection !== undefined;
   const hasStatusUpdate = payload.status !== undefined;
 
@@ -568,8 +576,90 @@ const getAssignmentLifecycle = async () => {
   );
 };
 
-const verifyRoomInventory = async ({ section, location, epcs, userId }) => {
-  const normalizedSection = normalizeOptionalString(section || location);
+const normalizeSectionKey = value => trimString(value).toLowerCase();
+
+const buildVerificationHistoryEntry = ({
+  asset,
+  auditId,
+  epc,
+  result,
+  scannedSection,
+  timestamp,
+  userId,
+}) => {
+  const currentSection = getAssetSection(asset);
+
+  return {
+    section: scannedSection,
+    currentSection,
+    expectedSection: currentSection,
+    scannedSection,
+    result,
+    auditId,
+    epc: normalizeEpc(epc || asset.epc),
+    source: 'rfid.verifyRoom',
+    verifiedAt: timestamp,
+    verifiedBy: userId,
+  };
+};
+
+const persistVerificationResults = async ({
+  auditId,
+  matchedAssets,
+  missingAssets,
+  normalizedSection,
+  timestamp,
+  unexpectedAssets,
+  userId,
+}) => {
+  const operations = [];
+
+  const addOperation = (asset, result, verificationStatus, epc) => {
+    operations.push({
+      updateOne: {
+        filter: { _id: asset._id },
+        update: {
+          $set: {
+            verificationStatus,
+            verifiedAt: timestamp,
+            verifiedBy: userId,
+          },
+          $push: {
+            verificationHistory: buildVerificationHistoryEntry({
+              asset,
+              auditId,
+              epc,
+              result,
+              scannedSection: normalizedSection,
+              timestamp,
+              userId,
+            }),
+          },
+        },
+      },
+    });
+  };
+
+  matchedAssets.forEach(asset => addOperation(asset, 'matched', 'Verified', asset.epc));
+  missingAssets.forEach(asset => addOperation(asset, 'missing', 'Missing', asset.epc));
+  unexpectedAssets.forEach(asset => addOperation(asset, 'section_mismatch', 'Section Mismatch', asset.epc));
+
+  if (operations.length === 0) {
+    return [];
+  }
+
+  await Asset.bulkWrite(operations, { ordered: false });
+  return operations.map(operation => String(operation.updateOne.filter._id));
+};
+
+const mapVerificationAsset = (asset, verificationStatus, timestamp) => ({
+  ...mapAssetResponse(asset),
+  verificationStatus,
+  verifiedAt: timestamp,
+});
+
+const verifyRoomInventory = async ({ section, epcs, userId }) => {
+  const normalizedSection = normalizeOptionalString(section);
   if (!normalizedSection) {
     throw createServiceError('section is required', 400);
   }
@@ -584,7 +674,9 @@ const verifyRoomInventory = async ({ section, location, epcs, userId }) => {
 
   const uniqueScannedEpcs = Array.from(new Set(scannedEpcs));
   const duplicateReads = scannedEpcs.length - uniqueScannedEpcs.length;
-  
+  const auditTimestamp = new Date();
+  const auditId = `audit-${auditTimestamp.getTime()}`;
+
   const [expectedAssets, scannedAssets] = await Promise.all([
     Asset.find(buildSectionFilter(normalizedSection)).sort({ assetName: 1 }),
     Asset.find({ epc: { $in: uniqueScannedEpcs } }),
@@ -592,87 +684,54 @@ const verifyRoomInventory = async ({ section, location, epcs, userId }) => {
 
   const expectedByEpc = new Map(expectedAssets.map(asset => [asset.epc, asset]));
   const scannedByEpc = new Map(scannedAssets.map(asset => [asset.epc, asset]));
+  const normalizedSectionKey = normalizeSectionKey(normalizedSection);
 
-  const matchedAssets = uniqueScannedEpcs
+  const matchedAssetDocs = uniqueScannedEpcs
     .filter(epc => expectedByEpc.has(epc))
-    .map(epc => mapAssetResponse(expectedByEpc.get(epc)));
+    .map(epc => expectedByEpc.get(epc));
 
-  const missingAssets = expectedAssets
-    .filter(asset => !uniqueScannedEpcs.includes(asset.epc))
-    .map(mapAssetResponse);
+  const missingAssetDocs = expectedAssets
+    .filter(asset => !uniqueScannedEpcs.includes(asset.epc));
 
-  const unexpectedAssets = uniqueScannedEpcs
+  const unexpectedAssetDocs = uniqueScannedEpcs
     .filter(epc => {
       const asset = scannedByEpc.get(epc);
-      return asset && getAssetSection(asset) !== normalizedSection;
+      return asset && normalizeSectionKey(getAssetSection(asset)) !== normalizedSectionKey;
     })
-    .map(epc => mapAssetResponse(scannedByEpc.get(epc)));
+    .map(epc => scannedByEpc.get(epc));
 
   const unregisteredTags = uniqueScannedEpcs
     .filter(epc => !scannedByEpc.has(epc))
     .map(epc => ({ epc }));
 
-  const auditId = `audit-${Date.now()}`;
+  const updatedAssetIds = await persistVerificationResults({
+    auditId,
+    matchedAssets: matchedAssetDocs,
+    missingAssets: missingAssetDocs,
+    normalizedSection,
+    timestamp: auditTimestamp,
+    unexpectedAssets: unexpectedAssetDocs,
+    userId,
+  });
+
   const verificationPercentage = expectedAssets.length === 0
     ? 0
-    : Math.round((matchedAssets.length / expectedAssets.length) * 100);
-
-  if (matchedAssets.length > 0 || missingAssets.length > 0) {
-    const matchedIds = new Set(matchedAssets.map(asset => String(asset.id)));
-    const missingIds = new Set(missingAssets.map(asset => String(asset.id)));
-
-    await Asset.updateMany(
-      { _id: { $in: [...matchedIds, ...missingIds] } },
-      [{
-        $set: {
-          verificationHistory: {
-            $concatArrays: [
-              { $ifNull: ['$verificationHistory', []] },
-              [{
-                section: normalizedSection,
-                auditId,
-                result: {
-                  $cond: [
-                    { $in: [{ $toString: '$_id' }, Array.from(matchedIds)] },
-                    'matched',
-                    'missing',
-                  ],
-                },
-                verifiedAt: new Date(),
-                verifiedBy: userId,
-              }],
-            ],
-          },
-        },
-      }],
-    );
-
-    if (matchedIds.size > 0) {
-      await Asset.updateMany(
-        { _id: { $in: Array.from(matchedIds) } },
-        {
-          $set: {
-            verificationStatus: 'Verified',
-            verifiedAt: new Date(),
-            verifiedBy: userId,
-          },
-        },
-      );
-    }
-  }
+    : Math.round((matchedAssetDocs.length / expectedAssets.length) * 100);
 
   return {
     auditId,
     section: normalizedSection,
-    auditTimestamp: new Date(),
+    currentSection: normalizedSection,
+    auditTimestamp,
     expectedCount: expectedAssets.length,
     scannedCount: scannedEpcs.length,
     uniqueScannedCount: uniqueScannedEpcs.length,
     duplicateReads,
-    matchedAssets,
-    missingAssets,
-    unexpectedAssets,
+    matchedAssets: matchedAssetDocs.map(asset => mapVerificationAsset(asset, 'Verified', auditTimestamp)),
+    missingAssets: missingAssetDocs.map(asset => mapVerificationAsset(asset, 'Missing', auditTimestamp)),
+    unexpectedAssets: unexpectedAssetDocs.map(asset => mapVerificationAsset(asset, 'Section Mismatch', auditTimestamp)),
     unregisteredTags,
+    updatedAssetIds,
     verificationPercentage,
   };
 };

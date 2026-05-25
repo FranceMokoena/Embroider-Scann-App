@@ -41,6 +41,12 @@ const assetSchema = new mongoose.Schema({
     default: undefined,
     index: true,
   },
+  currentSection: {
+    type: String,
+    set: trimString,
+    default: undefined,
+    index: true,
+  },
   // Legacy fields retained only so existing MongoDB documents can be migrated/read safely.
   category: {
     type: String,
@@ -107,11 +113,38 @@ const assetSchema = new mongoose.Schema({
   }],
   verificationHistory: [{
     section: { type: String, set: trimString },
+    currentSection: { type: String, set: trimString },
+    expectedSection: { type: String, set: trimString },
+    scannedSection: { type: String, set: trimString },
     result: { type: String, set: trimString },
     auditId: { type: String, set: trimString },
+    epc: { type: String, set: normalizeEpc },
+    source: { type: String, set: trimString },
     verifiedAt: { type: Date, default: () => new Date() },
     verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   }],
+  schemaVersion: {
+    type: Number,
+    default: 2,
+    index: true,
+  },
+  migrationMetadata: {
+    currentSectionBackfilledAt: { type: Date },
+    legacySectionSource: { type: String, set: trimString },
+  },
 }, { timestamps: true });
+
+assetSchema.index({ currentSection: 1, status: 1 });
+assetSchema.index({ currentSection: 1, verificationStatus: 1 });
+
+assetSchema.pre('validate', function syncCurrentSection(next) {
+  const canonicalSection = trimString(this.currentSection) || trimString(this.section);
+  if (canonicalSection) {
+    this.currentSection = canonicalSection;
+    this.section = canonicalSection;
+  }
+  this.schemaVersion = Math.max(Number(this.schemaVersion || 0), 2);
+  next();
+});
 
 module.exports = mongoose.model('Asset', assetSchema);

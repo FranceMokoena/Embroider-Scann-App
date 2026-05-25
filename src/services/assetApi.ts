@@ -15,6 +15,7 @@ export type AssetRecord = {
   assetNumber?: string | null;
   epc?: string | null;
   epcKey?: string | null;
+  currentSection?: string | null;
   section?: string | null;
   department?: string | null;
   category?: string | null;
@@ -48,8 +49,13 @@ export type AssetRecord = {
   }>;
   verificationHistory?: Array<{
     section?: string;
+    currentSection?: string;
+    expectedSection?: string;
+    scannedSection?: string;
     result?: string;
     auditId?: string;
+    epc?: string;
+    source?: string;
     verifiedAt?: string;
     verifiedBy?: string;
   }>;
@@ -74,6 +80,7 @@ export const deleteAssetById = async (assetId: string) => {
 };
 
 export type PatchAssetPayload = {
+  currentSection?: string;
   section?: string;
   status?: string;
 };
@@ -239,30 +246,23 @@ const normalizeSectionOptions = (values: unknown) => {
 };
 
 export const fetchSectionOptions = async () => {
-  const optionEndpoints = [
-    '/api/assets/sections/options',
-    '/api/assets/departments/options',
-  ];
+  try {
+    const result = await apiRequest<{ sections?: string[] }>(
+      '/api/assets/sections/options',
+      { method: 'GET' },
+    );
+    const options = normalizeSectionOptions(result.sections);
 
-  for (const endpoint of optionEndpoints) {
-    try {
-      const result = await apiRequest<{ sections?: string[]; departments?: string[] }>(
-        endpoint,
-        { method: 'GET' },
-      );
-      const options = normalizeSectionOptions(result.sections || result.departments);
-
-      if (options.length > 0) {
-        return options;
-      }
-    } catch (error) {
-      console.error(`Failed to load section options from ${endpoint}`, error);
+    if (options.length > 0) {
+      return options;
     }
+  } catch (error) {
+    console.error('Failed to load section options', error);
   }
 
   const result = await apiRequest<{ assets?: AssetRecord[] }>('/api/assets', { method: 'GET' });
   return normalizeSectionOptions(
-    (result.assets || []).map(asset => asset.section || asset.department || asset.category || asset.location),
+    (result.assets || []).map(asset => asset.currentSection || asset.section),
   );
 };
 
@@ -363,7 +363,7 @@ export const exportSectionsPdf = async (section?: string) => {
 export const fetchAssetsBySection = async (section: string) => {
   const encodedSection = encodeURIComponent(section);
   const result = await apiRequest<{ assets: AssetRecord[] }>(
-    `/api/assets?section=${encodedSection}`,
+    `/api/assets?currentSection=${encodedSection}`,
     { method: 'GET' },
   );
 

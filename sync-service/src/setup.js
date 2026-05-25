@@ -4,7 +4,14 @@ const {
   DesktopTaskSession, 
   DesktopScreen, 
   Statistics, 
-  SyncLog 
+  SyncLog,
+  DesktopSection,
+  DesktopAsset,
+  DesktopAssetIdentifier,
+  DesktopAssetHistory,
+  DesktopAssetVerification,
+  DesktopAssetTransfer,
+  DesktopRFIDEvent
 } = require('./models/desktopModels');
 
 async function setupDatabase() {
@@ -42,6 +49,14 @@ async function setupDatabase() {
     
     // Sync log indexes
     await SyncLog.createIndexes();
+    await DesktopSection.createIndexes();
+    await DesktopAsset.createIndexes();
+    await DesktopAssetIdentifier.createIndexes();
+    await DesktopAssetHistory.createIndexes();
+    await DesktopAssetVerification.createIndexes();
+    await DesktopAssetTransfer.createIndexes();
+    await DesktopRFIDEvent.createIndexes();
+    console.log('Asset-centric read model indexes created');
     console.log('✅ Sync log indexes created');
     
     console.log('🎉 Database setup completed successfully!');

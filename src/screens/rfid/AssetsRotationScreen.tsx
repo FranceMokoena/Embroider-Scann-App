@@ -54,7 +54,7 @@ const normalizeSectionOptions = (values: string[]) =>
   ).sort((left, right) => left.localeCompare(right));
 
 const getAssetSection = (asset: AssetRecord) =>
-  normalizeText(asset.section) || dash;
+  normalizeText(asset.currentSection) || normalizeText(asset.section) || dash;
 
 const getAssetEpc = (asset: AssetRecord) =>
   normalizeText(asset.epc) || normalizeText(asset.epcKey) || dash;

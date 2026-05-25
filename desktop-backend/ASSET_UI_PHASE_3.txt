@@ -1,0 +1,121 @@
+Asset UI Phase 3
+================
+
+Purpose
+-------
+This phase begins the desktop migration from barcode-centric admin screens toward asset-centric operational screens. The work is additive: legacy barcode admin routes, legacy report routes, Screen synchronization, and existing authentication remain in place.
+
+Implementation Surface
+----------------------
+The repository does not currently contain a populated desktop React application. To avoid creating a destructive frontend rewrite, this phase adds a self-contained asset operations console served by the existing desktop backend:
+
+- /asset-console/
+
+The console authenticates through the existing desktop admin login API and consumes only the asset API contracts introduced in Phase 2.
+
+Feature Flags
+-------------
+Desktop asset UI rollout is controlled through centralized feature flags in desktop-backend/src/config/featureFlags.js.
+
+Supported flags:
+
+- ASSET_UI_ENABLED
+- ASSET_UI_DASHBOARD_ENABLED
+- ASSET_UI_LISTS_ENABLED
+- ASSET_UI_DETAIL_ENABLED
+- ASSET_UI_REPORTING_ENABLED
+- ASSET_UI_RFID_OPERATIONS_ENABLED
+- ASSET_UI_VERIFICATION_ENABLED
+- ASSET_UI_TRANSFERS_ENABLED
+- ASSET_UI_SECTIONS_ENABLED
+- ASSET_UI_TECHNICIANS_ENABLED
+
+If ASSET_UI_ENABLED is disabled, the console shows a disabled-state message and does not call asset APIs during initial load. It does not fall back to barcode or Screen workflows.
+
+Desktop Asset UI Architecture
+-----------------------------
+The asset console is browser-rendered from:
+
+- desktop-backend/public/asset-console/index.html
+- desktop-backend/public/asset-console/styles.css
+- desktop-backend/public/asset-console/app.js
+
+It provides asset-focused operational views:
+
+- dashboard
+- asset table
+- asset detail
+- section dashboards
+- technician dashboards
+- verification history
+- transfer history
+- RFID operational metrics
+- asset reports
+
+API Dependency Strategy
+-----------------------
+The UI uses the Phase 2 asset APIs:
+
+- GET /api/assets/dashboard
+- GET /api/assets
+- GET /api/assets/:id
+- GET /api/assets/resolve
+- GET /api/assets/verifications
+- GET /api/assets/transfers
+- GET /api/assets/rfid-activity
+- GET /api/assets/reports/:type
+
+It does not query MongoDB directly and does not consume legacy Screen collections.
+
+Dashboard Strategy
+------------------
+The dashboard reads the aggregated /api/assets/dashboard projection and displays total assets, asset health, verification, transfer, active RFID, unresolved identifier, section, technician, and recent RFID activity metrics.
+
+Asset Table Strategy
+--------------------
+The asset table uses API pagination, sorting defaults, debounced searching, request cancellation, and identifier resolution through DesktopAssetIdentifier-backed APIs. Identifier searches require both identifier type and normalized value, so EPC is not hardcoded as the lookup model.
+
+Asset Detail Strategy
+---------------------
+The asset detail view reads /api/assets/:id and renders the aggregated asset projection: asset metadata, identifiers, status history, verification history, transfer history, and RFID activity.
+
+The detail screen does not query raw RFID event collections directly.
+
+RFID Dashboard Strategy
+-----------------------
+The RFID view is operational reporting only. It displays read activity, mapping status, duplicate suppression state, reader session identifiers, and timestamps from /api/assets/rfid-activity. It is not an ingestion console and does not expose reader control.
+
+UI Observability
+----------------
+The console posts lightweight operational telemetry to:
+
+- POST /api/features/usage
+- POST /api/features/ui-metrics
+
+Tracked events include feature usage, dashboard load timing, asset table query timing, identifier lookup timing, report generation timing, UI errors, and slow renders.
+
+Backward Compatibility
+----------------------
+Legacy desktop flows remain available:
+
+- /api/legacy/admin
+- /api/legacy/reports
+- /api/legacy/messaging
+- existing authentication middleware
+- legacy barcode reports
+- Screen-based synchronization and statistics
+
+Legacy desktop routes are isolated behind DESKTOP_LEGACY_MODE. The default mode is read-only for write methods. The asset console is separately served and does not link to barcode or Screen workflows.
+
+Future UI Migration Path
+------------------------
+Future phases can replace or wrap the static console with a React desktop application using the same contracts. The stable boundaries are:
+
+- /api/features for rollout
+- /api/assets/dashboard for dashboards
+- /api/assets for tables
+- /api/assets/:id for details
+- /api/assets/reports/:type for reporting
+- /api/assets/rfid-activity for RFID operations
+
+This keeps the future UI migration API-driven and prevents the desktop from coupling directly to RFID ingestion or sync collections.

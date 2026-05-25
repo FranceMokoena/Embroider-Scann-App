@@ -1,0 +1,127 @@
+Asset Sync Phase 1
+==================
+
+Purpose
+-------
+This phase adds asset-centric synchronization in parallel with the existing barcode screen synchronization. The legacy Screen -> DesktopScreen path is intentionally preserved so current desktop reporting and barcode workflows continue to operate while the desktop platform migrates toward asset operations.
+
+Architecture
+------------
+The sync-service now has two independent synchronization lanes:
+
+1. Legacy lane:
+   User, TaskSession, and Screen records continue to sync into the existing desktop User, TaskSession, Screen, and Statistics read models.
+
+2. Asset lane:
+   Asset, RFIDTag, AssetTagMapping, TagScanLog, and Section records are transformed into normalized asset sync DTOs and written into dedicated desktop read models.
+
+The asset lane runs after the legacy lane. If the asset lane fails, the full sync is logged as partial and the legacy sync remains intact.
+
+Asset Sync DTO
+--------------
+The projection layer produces:
+
+{
+  assetId,
+  assetNumber,
+  assetName,
+  status,
+  section,
+  technician,
+  identifiers: [
+    { type, value, active }
+  ],
+  currentLocation,
+  verificationState,
+  repairState,
+  transferState,
+  lastSeenAt,
+  createdAt,
+  updatedAt
+}
+
+Identifier details are kept internally during transformation so desktop read models can preserve tag and mapping provenance without exposing EPC as the core asset identity.
+
+Desktop Read Models
+-------------------
+New read models are additive and do not reuse DesktopScreen:
+
+- DesktopAsset
+- DesktopAssetIdentifier
+- DesktopAssetHistory
+- DesktopAssetVerification
+- DesktopAssetTransfer
+- DesktopRFIDEvent
+- DesktopSection
+
+These collections are optimized for future desktop asset views, dashboards, verification workflows, and RFID operations reporting.
+
+Identifier Strategy
+-------------------
+Supported identifier types are:
+
+- RFID
+- EPC
+- BARCODE
+- QR
+- NFC
+
+RFID and EPC values are normalized to uppercase alphanumeric values. Other identifier technologies are trimmed but not structurally rewritten. This keeps the system extensible for future QR, NFC, and legacy barcode coexistence.
+
+Status Strategy
+---------------
+Legacy barcode records use Reparable; asset records use Repairable. The asset sync layer normalizes both values to Repairable for new desktop asset read models. Legacy DesktopScreen records are not modified, so existing reporting remains backward compatible.
+
+RFID Event Safety
+-----------------
+Backend RFID scan logging now supports:
+
+- readerSessionId
+- idempotencyKey
+- client read timestamp
+- server received timestamp
+- server-side duplicate suppression window
+- duplicate suppression reason
+
+The mobile RFID home screen sends a stable idempotency key per reader session, EPC, and first-seen timestamp. The backend still accepts older payloads without these fields.
+
+Observability
+-------------
+Asset sync writes structured JSON logs with:
+
+- synced assets
+- synced identifiers
+- synced histories
+- synced verification records
+- synced transfers
+- synced RFID events
+- duplicate RFID event count
+- unresolved identifier count
+- sync lag
+- per-record failure logs
+
+SyncLog.metrics stores the same counters for auditability.
+
+Backward Compatibility
+----------------------
+The following remain unchanged:
+
+- mobile barcode scanning
+- /api/scan backend behavior
+- Screen source records
+- DesktopScreen target records
+- legacy statistics calculation
+- existing desktop reporting dependencies
+
+This phase only introduces the parallel asset synchronization foundation.
+
+Extension Points
+----------------
+Future phases can build on:
+
+- DesktopAsset for desktop asset lists and lifecycle screens
+- DesktopAssetIdentifier for barcode/RFID/QR/NFC coexistence
+- DesktopRFIDEvent for RFID operational reporting
+- DesktopAssetVerification for audit dashboards
+- DesktopAssetTransfer for rotation and movement history
+- server-side RFID idempotency and duplicate suppression for batch ingestion

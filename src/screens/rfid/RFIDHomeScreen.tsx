@@ -316,7 +316,7 @@ export default function RFIDHomeScreen({ navigation }: any) {
       if (!loggedScanKeys.has(entry.epcKey)) {
         loggedScanKeys.add(entry.epcKey);
         scanLogKeysBySession.set(scanSessionId, loggedScanKeys);
-        void writeScanLog(entry, mappingStatus);
+        void writeScanLog(entry, mappingStatus, scanSessionId);
       }
     } catch (error) {
       setLookupError(error instanceof Error ? error.message : 'RFID lookup failed.');
@@ -327,12 +327,17 @@ export default function RFIDHomeScreen({ navigation }: any) {
   const writeScanLog = async (
     entry: RFIDStreamEntry,
     mappingStatus: RFIDMappingStatus,
+    readerSessionId: string,
   ) => {
     try {
+      const readTimestamp = new Date(entry.firstSeenAt).toISOString();
       await apiRequest('/api/rfid/scan-log', {
         method: 'POST',
         body: {
           epcRaw: entry.epcRaw,
+          readerSessionId,
+          idempotencyKey: `${readerSessionId}:${entry.epcKey}:${entry.firstSeenAt}`,
+          readTimestamp,
           source: 'deviceApi',
           screen: 'RFIDHomeScreen',
           mappingStatus,
@@ -699,7 +704,7 @@ export default function RFIDHomeScreen({ navigation }: any) {
             {[
               // ERP sidebar navigation items for dedicated asset status screens
               { label: 'All Sections', icon: 'business-outline' },
-              { label: 'Assets Rotation', icon: 'rotate-outline' },
+              { label: 'Assets Rotation', icon: 'circles-outline' },
               { label: 'Production', icon: 'archive-outline' },
               { label: 'To Repair', icon: 'construct-outline' },
               { label: 'Written Off', icon: 'close-circle-outline' },
