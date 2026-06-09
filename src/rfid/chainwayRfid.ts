@@ -35,10 +35,17 @@ const DEVICE_CONTROL_CONFLICT_WARNING = 'RFID engine already active outside this
 const DEVICE_CONTROL_CONFLICT_SOURCE = 'AppCenter or system scanner service';
 const EXTERNAL_EPC_WARNING_THRESHOLD = 2;
 
-export type RfidTagScannedEvent = {
+export interface RfidTagScannedEvent {
   epc: string;
   timestamp: number;
-};
+  rssi?: number;
+  antenna?: number;
+  phase?: number;
+  frequency?: number;
+  sdkReadCount?: number;
+  pc?: string;
+  tid?: string;
+}
 
 export type ChainwayRfidDeviceControlConflictWarning = {
   warning: string;
@@ -225,6 +232,50 @@ const logError = (...args: unknown[]) => {
 
 const toErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
+
+const toOptionalNumber = (value: unknown) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+};
+
+const toOptionalString = (value: unknown) => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || undefined;
+};
+
+const normalizeNativeRfidEvent = (
+  event: Partial<RfidTagScannedEvent> | null | undefined,
+): RfidTagScannedEvent | null => {
+  const epc = normalizeEpc(event?.epc || '');
+
+  if (!epc) {
+    return null;
+  }
+
+  return {
+    epc,
+    timestamp: Number(event?.timestamp) || Date.now(),
+    rssi: toOptionalNumber(event?.rssi),
+    antenna: toOptionalNumber(event?.antenna),
+    phase: toOptionalNumber(event?.phase),
+    frequency: toOptionalNumber(event?.frequency),
+    sdkReadCount: toOptionalNumber(event?.sdkReadCount),
+    pc: toOptionalString(event?.pc),
+    tid: toOptionalString(event?.tid),
+  };
+};
 
 const getRegistryDebugInfo = () => {
   const expoModules = (globalThis as any).expo?.modules;
@@ -604,14 +655,12 @@ const waitForConfirmedEpc = (
 
     try {
       subscription = nativeModule.addListener!(RFID_TAG_SCANNED_EVENT, event => {
-        const epc = normalizeEpc(event?.epc || '');
-        const timestamp = Number(event?.timestamp) || Date.now();
+        const normalizedEvent = normalizeNativeRfidEvent(event);
 
-        if (!epc || timestamp < startedAt) {
+        if (!normalizedEvent || normalizedEvent.timestamp < startedAt) {
           return;
         }
 
-        const normalizedEvent = { epc, timestamp };
         void playRfidScanSound();
         recordJsRfidEvent(normalizedEvent, 'inventoryConfirmation');
         finish(normalizedEvent);
@@ -666,16 +715,11 @@ export const addRfidTagListener = (
 
   try {
     nativeSubscription = nativeModule.addListener!(RFID_TAG_SCANNED_EVENT, event => {
-      const epc = normalizeEpc(event?.epc || '');
-      if (!epc) {
+      const normalizedEvent = normalizeNativeRfidEvent(event);
+      if (!normalizedEvent) {
         logWarn('Ignoring native RFID event without a valid EPC', event);
         return;
       }
-
-      const normalizedEvent = {
-        epc,
-        timestamp: Number(event?.timestamp) || Date.now(),
-      };
 
       void playRfidScanSound();
       recordJsRfidEvent(normalizedEvent, source);

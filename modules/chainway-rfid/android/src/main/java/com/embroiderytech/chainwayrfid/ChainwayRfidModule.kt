@@ -20,6 +20,15 @@ class ChainwayRfidModule : Module() {
   private var reader: RFIDWithUHFUART? = null
   private val mainHandler = Handler(Looper.getMainLooper())
 
+  private data class RfidTagMetadata(
+    val rssi: Double? = null,
+    val antenna: Int? = null,
+    val phase: Int? = null,
+    val frequency: Double? = null,
+    val sdkReadCount: Int? = null,
+    val pc: String? = null
+  )
+
   private var receiverRegistered = false
   private var receiverEnabled = true
   private var observing = false
@@ -483,21 +492,36 @@ class ChainwayRfidModule : Module() {
   private fun handleSdkInventoryCallback(tagInfo: UHFTAGInfo?) {
     val rawEpc = tagInfo?.getEPC()
     val rawTid = tagInfo?.getTid()
+    val metadata = tagInfo?.let {
+      RfidTagMetadata(
+        rssi = parseOptionalDouble(it.getRssi()),
+        antenna = parseOptionalInt(it.getAnt()),
+        phase = parseOptionalInt(it.getPhase()),
+        frequency = parseOptionalDouble(it.getFrequencyPoint()),
+        sdkReadCount = parseOptionalInt(it.getCount()),
+        pc = normalizeMetadataText(it.getPc())
+      )
+    }
     val rawTagObject = tagInfo?.toString()
     lastSdkRawTagObject = rawTagObject
 
     Log.d(DIAGNOSTIC_TAG, "TAG RAW OBJECT = $rawTagObject")
-    Log.d(DIAGNOSTIC_TAG, "EPC RECEIVED = $rawEpc | TID = $rawTid")
+    Log.d(DIAGNOSTIC_TAG, "EPC RECEIVED = $rawEpc | TID = $rawTid | RSSI = ${metadata?.rssi}")
     Log.i(TAG, "DeviceAPI inventory callback fired rawEpcAvailable=${!rawEpc.isNullOrBlank()}")
 
     mainHandler.post {
       sdkCallbackCount += 1
       lastSdkCallbackAt = System.currentTimeMillis()
-      handleIncomingEpc(rawEpc, rawTid, "deviceApiCallback")
+      handleIncomingEpc(rawEpc, rawTid, "deviceApiCallback", metadata)
     }
   }
 
-  private fun handleIncomingEpc(rawData: String?, rawTid: String?, source: String) {
+  private fun handleIncomingEpc(
+    rawData: String?,
+    rawTid: String?,
+    source: String,
+    metadata: RfidTagMetadata? = null
+  ) {
     lastRawData = rawData
 
     val epc = normalizeEpc(rawData)
@@ -539,9 +563,9 @@ class ChainwayRfidModule : Module() {
 
     Log.i(
       TAG,
-      "RFID EPC received source=$source epc=$epc tid=$lastTid broadcastCount=$broadcastCount sdkCallbackCount=$sdkCallbackCount"
+      "RFID EPC received source=$source epc=$epc tid=$lastTid rssi=${metadata?.rssi} broadcastCount=$broadcastCount sdkCallbackCount=$sdkCallbackCount"
     )
-    emitTag(epc, lastTid)
+    emitTag(epc, lastTid, metadata)
   }
 
   private fun scheduleSdkSilentFailureCheck(
@@ -740,9 +764,13 @@ class ChainwayRfidModule : Module() {
     }
   }
 
-  private fun emitTag(epc: String, tid: String? = null) {
+  private fun emitTag(
+    epc: String,
+    tid: String? = null,
+    metadata: RfidTagMetadata? = null
+  ) {
     if (Looper.myLooper() != Looper.getMainLooper()) {
-      mainHandler.post { emitTag(epc, tid) }
+      mainHandler.post { emitTag(epc, tid, metadata) }
       return
     }
 
@@ -757,7 +785,13 @@ class ChainwayRfidModule : Module() {
       mapOf(
         "epc" to epc,
         "tid" to tid,
-        "timestamp" to System.currentTimeMillis()
+        "timestamp" to System.currentTimeMillis(),
+        "rssi" to metadata?.rssi,
+        "antenna" to metadata?.antenna,
+        "phase" to metadata?.phase,
+        "frequency" to metadata?.frequency,
+        "sdkReadCount" to metadata?.sdkReadCount,
+        "pc" to metadata?.pc
       )
     )
 
@@ -782,6 +816,29 @@ class ChainwayRfidModule : Module() {
       ?.replace(Regex("[^A-Z0-9]"), "")
 
     return normalized?.takeIf { it.isNotEmpty() }
+  }
+
+  private fun normalizeMetadataText(value: Any?): String? {
+    return value
+      ?.toString()
+      ?.trim()
+      ?.uppercase(Locale.US)
+      ?.takeIf { it.isNotEmpty() && it != "NULL" }
+  }
+
+  private fun parseOptionalDouble(value: Any?): Double? {
+    return value
+      ?.toString()
+      ?.trim()
+      ?.toDoubleOrNull()
+      ?.takeIf { it.isFinite() }
+  }
+
+  private fun parseOptionalInt(value: Any?): Int? {
+    return value
+      ?.toString()
+      ?.trim()
+      ?.toIntOrNull()
   }
 
   private fun getDiagnostics(): Map<String, Any?> {

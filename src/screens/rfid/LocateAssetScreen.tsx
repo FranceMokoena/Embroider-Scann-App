@@ -14,8 +14,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 
-import CampusTrackingMap from './components/CampusTrackingMap';
-import { useCampusProximityTracker } from './hooks/useCampusProximityTracker';
+import LocateAssetGuidancePanel from './components/LocateAssetGuidancePanel';
+import { useLocateAssetGuidance } from './hooks/useLocateAssetGuidance';
 import { apiRequest } from '../../config/api';
 import { fetchAssetById } from '../../services/assetApi';
 import { useSectionAwareRefresh } from './hooks/useSectionAwareRefresh';
@@ -129,6 +129,8 @@ export default function LocateAssetScreen({ navigation }: any) {
   const [resultAssets, setResultAssets] = useState<AssetRecord[]>([]);
   const [searchError, setSearchError] = useState('');
   const [lastRfidScanAt, setLastRfidScanAt] = useState<number | null>(null);
+  const [isGuidanceMuted, setIsGuidanceMuted] = useState(false);
+  const [isFoundLocked, setIsFoundLocked] = useState(false);
 
   const lastCapturedEpcRef = useRef<string | null>(null);
   const dropdownAnim = useRef(new Animated.Value(0)).current;
@@ -139,13 +141,16 @@ export default function LocateAssetScreen({ navigation }: any) {
     (snapshot.lifecycle === 'starting' || snapshot.lifecycle === 'scanning');
   const latestEntry = snapshot.entries[0] ?? null;
   const selectedOption = locateOptions.find(option => option.value === locateMode);
-  const locationLabel = getAssetLocation(locatedAsset);
   const activeStatus = isRfidScanning || isTracking || isSearching ? 'Scanning' : 'Idle';
   const targetTrackingEpc = locatedAsset ? getAssetEpc(locatedAsset) : null;
-  const campusProximity = useCampusProximityTracker(
-    targetTrackingEpc,
-    isTracking,
+  const locateGuidance = useLocateAssetGuidance(
+    isTracking ? targetTrackingEpc : null,
     snapshot,
+    isTracking && Boolean(locatedAsset),
+    {
+      isFeedbackMuted: isGuidanceMuted,
+      isFoundLocked,
+    },
   );
 
   const hasActiveTrackingSession =
@@ -166,6 +171,10 @@ export default function LocateAssetScreen({ navigation }: any) {
       useNativeDriver: true,
     }).start();
   }, [dropdownAnim, dropdownOpen]);
+
+  useEffect(() => {
+    setIsFoundLocked(false);
+  }, [targetTrackingEpc]);
 
   useEffect(() => {
     if (!isEpcCaptureActive) return;
@@ -307,6 +316,7 @@ export default function LocateAssetScreen({ navigation }: any) {
     setLocatedAsset(null);
     setResultAssets([]);
     setIsTracking(false);
+    setIsFoundLocked(false);
 
     if (!searchValue) {
       setSearchError('Enter an asset reference before searching.');
@@ -371,6 +381,7 @@ export default function LocateAssetScreen({ navigation }: any) {
     setIsEpcCaptureActive(false);
     setDropdownOpen(false);
     setIsSearching(false);
+    setIsFoundLocked(false);
 
     if (controller.isOwner(ownerId)) {
       await controller.stopScan(ownerId);
@@ -484,6 +495,7 @@ export default function LocateAssetScreen({ navigation }: any) {
                         setLocatedAsset(null);
                         setResultAssets([]);
                         setIsTracking(false);
+                        setIsFoundLocked(false);
                       }}
                       activeOpacity={0.75}
                     >
@@ -512,6 +524,7 @@ export default function LocateAssetScreen({ navigation }: any) {
                 setResultAssets([]);
                 setIsTracking(false);
                 setLastRfidScanAt(null);
+                setIsFoundLocked(false);
               }}
               autoCapitalize="characters"
               autoCorrect={false}
@@ -610,62 +623,33 @@ export default function LocateAssetScreen({ navigation }: any) {
           </View>
         ) : null}
 
-        <View style={styles.mapSection}>
-          <View style={styles.mapHeader}>
-            <View>
-              <Text style={styles.eyebrow}>Campus Map</Text>
-              <Text style={styles.mapTitle}>Section Locator View</Text>
-            </View>
-            <View style={styles.locationPill}>
-              <Ionicons name="location-outline" size={14} color="#166534" />
-              <Text style={styles.locationPillText} numberOfLines={1}>
-                {locatedAsset ? locationLabel : 'Idle'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.mapCanvas}>
-            <CampusTrackingMap
-              isTracking={isTracking && Boolean(locatedAsset)}
-              locationLabel={locationLabel}
-              proximity={campusProximity}
-            />
-          </View>
-
-          {locatedAsset ? (
-            <View style={styles.locationMetadataCard}>
-              <View style={styles.locationMetadataIcon}>
-                <Ionicons name="business-outline" size={20} color={PRIMARY_BLUE} />
-              </View>
-              <View style={styles.locationMetadataCopy}>
-                <Text style={styles.locationMetadataTitle} numberOfLines={1}>
-                  {locationLabel}
-                </Text>
-                <Text style={styles.locationMetadataText} numberOfLines={1}>
-                  Serial {locatedAsset.serialNumber || 'N/A'} | ID {getAssetId(locatedAsset)}
-                </Text>
-              </View>
-            </View>
-          ) : null}
-
-          <TouchableOpacity
-            style={[
-              styles.stopButton,
-              stopButtonDisabled && styles.stopButtonInactive,
-            ]}
-            onPress={handleStopTracking}
-            activeOpacity={0.85}
-            disabled={stopButtonDisabled}
-          >
-            <Ionicons
-              name={stopButtonDisabled ? 'pause-circle-outline' : 'stop-circle-outline'}
-              size={18}
-              color="#ffffff"
-            />
-            <Text style={styles.stopButtonText}>{stopButtonLabel}</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={[
+            styles.stopButton,
+            stopButtonDisabled && styles.stopButtonInactive,
+          ]}
+          onPress={handleStopTracking}
+          activeOpacity={0.85}
+          disabled={stopButtonDisabled}
+        >
+          <Ionicons
+            name={stopButtonDisabled ? 'pause-circle-outline' : 'stop-circle-outline'}
+            size={18}
+            color="#ffffff"
+          />
+          <Text style={styles.stopButtonText}>{stopButtonLabel}</Text>
+        </TouchableOpacity>
       </ScrollView>
+
+      <LocateAssetGuidancePanel
+        guidance={locateGuidance}
+        visible={isTracking && Boolean(locatedAsset)}
+        feedbackMuted={isGuidanceMuted}
+        foundLocked={isFoundLocked}
+        onToggleFeedback={() => setIsGuidanceMuted(previous => !previous)}
+        onConfirmFound={() => setIsFoundLocked(true)}
+        onReleaseFound={() => setIsFoundLocked(false)}
+      />
     </SafeAreaView>
   );
 }

@@ -26,6 +26,13 @@ export type RFIDStreamEntry = {
   readCount: number;
   duplicateSuppressedCount: number;
   mappingStatus: RFIDMappingStatus;
+  rssi?: number;
+  antenna?: number;
+  phase?: number;
+  frequency?: number;
+  sdkReadCount?: number;
+  pc?: string;
+  tid?: string;
 };
 
 export type RFIDStreamSnapshot = {
@@ -471,6 +478,13 @@ export class RFIDStreamController {
         readCount: 1,
         duplicateSuppressedCount: 0,
         mappingStatus: 'unknown',
+        rssi: event.rssi,
+        antenna: event.antenna,
+        phase: event.phase,
+        frequency: event.frequency,
+        sdkReadCount: event.sdkReadCount,
+        pc: event.pc,
+        tid: event.tid,
       };
 
       this.entriesByEpc.set(epcKey, entry);
@@ -489,6 +503,13 @@ export class RFIDStreamController {
       duplicateSuppressedCount: isDuplicate
         ? existing.duplicateSuppressedCount + 1
         : existing.duplicateSuppressedCount,
+      rssi: event.rssi ?? existing.rssi,
+      antenna: event.antenna ?? existing.antenna,
+      phase: event.phase ?? existing.phase,
+      frequency: event.frequency ?? existing.frequency,
+      sdkReadCount: event.sdkReadCount ?? existing.sdkReadCount,
+      pc: event.pc ?? existing.pc,
+      tid: event.tid ?? existing.tid,
     };
 
     this.entriesByEpc.set(epcKey, updatedEntry);
